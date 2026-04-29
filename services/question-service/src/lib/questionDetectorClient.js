@@ -13,6 +13,7 @@ const repoRoot = path.resolve(serviceRoot, '..', '..');
 const DEFAULT_SCRIPT_PATH = path.join(
     serviceRoot,
     'scripts',
+    'question-detection',
     'run_hybrid_question_pipeline.py',
 );
 

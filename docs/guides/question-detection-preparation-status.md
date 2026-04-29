@@ -56,9 +56,9 @@
 
 관련 파일:
 
-- `services/question-service/scripts/preprocess_aihub_sns_multiturn.py`
-- `services/question-service/scripts/clean_aihub_sns_multiturn.py`
-- `services/question-service/scripts/build_question_detection_dataset.py`
+- `services/question-service/scripts/question-detection/preprocess_aihub_sns_multiturn.py`
+- `services/question-service/scripts/question-detection/clean_aihub_sns_multiturn.py`
+- `services/question-service/scripts/question-detection/build_question_detection_dataset.py`
 
 이 스크립트들이 하는 일:
 
@@ -77,7 +77,7 @@
 
 관련 파일:
 
-- `services/question-service/scripts/split_question_detection_dataset.py`
+- `services/question-service/scripts/question-detection/split_question_detection_dataset.py`
 - `data/processed/question_detection/train.csv.dvc`
 - `data/processed/question_detection/valid.csv.dvc`
 - `data/processed/question_detection/test.csv.dvc`
@@ -95,7 +95,7 @@
 
 관련 파일:
 
-- `services/question-service/scripts/preprocess_question_detection_for_tfidf.py`
+- `services/question-service/scripts/question-detection/preprocess_question_detection_for_tfidf.py`
 
 현재 처리되는 항목:
 
@@ -123,7 +123,7 @@
 
 관련 파일:
 
-- `services/question-service/scripts/question_detection_rules.py`
+- `services/question-service/scripts/question-detection/question_detection_rules.py`
 
 현재 정의된 항목:
 
@@ -152,10 +152,10 @@
 
 관련 파일:
 
-- `services/question-service/scripts/train_tfidf_question_detector.py`
-- `services/question-service/scripts/train_tfidf_question_detector_with_threshold.py`
-- `services/question-service/scripts/compare_question_detector_variants.py`
-- `services/question-service/scripts/analyze_question_detection_errors.py`
+- `services/question-service/scripts/question-detection/train_tfidf_question_detector.py`
+- `services/question-service/scripts/question-detection/train_tfidf_question_detector_with_threshold.py`
+- `services/question-service/scripts/question-detection/compare_question_detector_variants.py`
+- `services/question-service/scripts/question-detection/analyze_question_detection_errors.py`
 
 이 스크립트들이 지원하는 작업:
 
@@ -212,19 +212,19 @@
 처음 보는 팀원이 전체 흐름을 빠르게 따라가려면 아래 순서로 보면 됩니다.
 
 - 원본 데이터 정리:
-  `services/question-service/scripts/preprocess_aihub_sns_multiturn.py`
-  `services/question-service/scripts/clean_aihub_sns_multiturn.py`
-  `services/question-service/scripts/build_question_detection_dataset.py`
+  `services/question-service/scripts/question-detection/preprocess_aihub_sns_multiturn.py`
+  `services/question-service/scripts/question-detection/clean_aihub_sns_multiturn.py`
+  `services/question-service/scripts/question-detection/build_question_detection_dataset.py`
 - 데이터 분할:
-  `services/question-service/scripts/split_question_detection_dataset.py`
+  `services/question-service/scripts/question-detection/split_question_detection_dataset.py`
 - TF-IDF 입력 정규화:
-  `services/question-service/scripts/preprocess_question_detection_for_tfidf.py`
+  `services/question-service/scripts/question-detection/preprocess_question_detection_for_tfidf.py`
 - 규칙 정의:
-  `services/question-service/scripts/question_detection_rules.py`
+  `services/question-service/scripts/question-detection/question_detection_rules.py`
 - baseline 학습 및 threshold 실험:
-  `services/question-service/scripts/train_tfidf_question_detector.py`
-  `services/question-service/scripts/train_tfidf_question_detector_with_threshold.py`
+  `services/question-service/scripts/question-detection/train_tfidf_question_detector.py`
+  `services/question-service/scripts/question-detection/train_tfidf_question_detector_with_threshold.py`
 - 비교 및 오류 분석:
-  `services/question-service/scripts/compare_question_detector_variants.py`
-  `services/question-service/scripts/analyze_question_detection_errors.py`
+  `services/question-service/scripts/question-detection/compare_question_detector_variants.py`
+  `services/question-service/scripts/question-detection/analyze_question_detection_errors.py`
 

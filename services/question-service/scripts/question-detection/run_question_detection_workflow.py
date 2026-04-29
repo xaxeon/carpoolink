@@ -77,7 +77,7 @@ def run_command(command: list[str], cwd: Path) -> None:
 def main() -> None:
     args = parse_args()
     root = Path(args.project_root).resolve()
-    scripts_dir = root / "carpoolink" / "services" / "question-service" / "scripts"
+    scripts_dir = root / "services" / "question-service" / "scripts" / "question-detection"
 
     if not args.skip_preprocess:
         run_command(
@@ -85,13 +85,13 @@ def main() -> None:
                 args.python_executable,
                 str(scripts_dir / "preprocess_question_detection_for_tfidf.py"),
                 "--train-path",
-                "carpoolink/data/processed/question_detection/train.csv",
+                "data/processed/question_detection/train.csv",
                 "--valid-path",
-                "carpoolink/data/processed/question_detection/valid.csv",
+                "data/processed/question_detection/valid.csv",
                 "--test-path",
-                "carpoolink/data/processed/question_detection/test.csv",
+                "data/processed/question_detection/test.csv",
                 "--output-dir",
-                "carpoolink/data/processed/question_detection/tfidf_ready",
+                "data/processed/question_detection/tfidf_ready",
             ],
             cwd=root,
         )
@@ -102,15 +102,15 @@ def main() -> None:
                 args.python_executable,
                 str(scripts_dir / "compare_question_detector_variants.py"),
                 "--train-path",
-                "carpoolink/data/processed/question_detection/tfidf_ready/train.csv",
+                "data/processed/question_detection/tfidf_ready/train.csv",
                 "--valid-path",
-                "carpoolink/data/processed/question_detection/tfidf_ready/valid.csv",
+                "data/processed/question_detection/tfidf_ready/valid.csv",
                 "--test-path",
-                "carpoolink/data/processed/question_detection/tfidf_ready/test.csv",
+                "data/processed/question_detection/tfidf_ready/test.csv",
                 "--model-root-dir",
-                "carpoolink/services/model/question_detection",
+                "services/model/question_detection",
                 "--report-dir",
-                "carpoolink/services/question-service/outputs/question_detection/variant_comparison",
+                "services/question-service/outputs/question_detection/variant_comparison",
             ],
             cwd=root,
         )
@@ -120,15 +120,15 @@ def main() -> None:
             args.python_executable,
             str(scripts_dir / "train_kc_electra_question_detector.py"),
             "--train-path",
-            "carpoolink/data/processed/question_detection/train.csv",
+            "data/processed/question_detection/train.csv",
             "--valid-path",
-            "carpoolink/data/processed/question_detection/valid.csv",
+            "data/processed/question_detection/valid.csv",
             "--test-path",
-            "carpoolink/data/processed/question_detection/test.csv",
+            "data/processed/question_detection/test.csv",
             "--model-name",
             args.kc_electra_model_name,
             "--output-dir",
-            "carpoolink/services/model/question_detection/kc_electra_question_detector",
+            "services/model/question_detection/kc_electra_question_detector",
         ]
 
         if args.kc_electra_max_train_samples is not None:
