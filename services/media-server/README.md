@@ -2,11 +2,12 @@
 
 1:N, 1:1에서 사용될 mediasoup 기반 SFU 기능을 지원하는 서비스입니다.
 
-현재 구현은 1:N 온라인 멘토링 시나리오를 우선 지원합니다.
+현재 구현은 `mentorings.isGroup` 값에 따라 1:N/1:1 시나리오를 모두 지원합니다.
 
 - 멘토가 멘토링 시작 시 `mentorings` 레코드 생성
 - 멘티는 Socket.IO 시그널링으로 입장 후 멘토의 비디오/오디오를 consume
-- 멘티는 채팅 기반 참여를 전제로 미디어 produce 제한
+- 1:N(`isGroup=true`)에서는 멘티 미디어 produce 제한
+- 1:1(`isGroup=false`)에서는 멘토/멘티가 오디오 통화로 상호 송수신
 - 오디오 파이프라인 확장 지점 제공(STT, 저장, TTS 믹싱)
 
 ## Run
@@ -36,7 +37,7 @@ Request example:
 ```json
 {
 	"title": "프론트엔드 커리어 멘토링",
-	"isGroup": true
+	"isGroup": false
 }
 ```
 
@@ -99,19 +100,27 @@ Endpoint: `/socket.io`
 - `peer-left`
 - `new-producer`
 
-## 역할 제약(1:N)
+## 역할/미디어 제약
 
-- `mentor`: 오디오/비디오 produce 가능 (방당 1명)
-- `mentee`: produce 불가, consume만 가능
-- `tts-bot`: 오디오만 produce 가능
+- 공통:
+	- `mentor`: 방당 1명
+	- `tts-bot`: 오디오만 produce 가능
+- 1:N (`isGroup=true`):
+	- `mentor`: 오디오/비디오 produce 가능
+	- `mentee`: produce 불가, consume만 가능
+- 1:1 (`isGroup=false`):
+	- 참여 주체는 `mentor` 1명, `mentee` 1명(추가로 `tts-bot` 1개 연결 가능)
+	- `mentor`/`mentee` 모두 오디오 produce 가능
+	- 비디오 produce 불가(오디오 통화 전용)
 
 ## 오디오 저장/스크립트 확장 포인트
 
 `src/streaming/audioPipeline.js`에 확장 지점이 있습니다.
 
 - `attachMentorAudioProducer`: 멘토 음성 트랙 연결 시점
+- `attachMenteeAudioProducer`: 멘티 음성 트랙 연결 시점 (1:1)
 - `attachTtsAudioProducer`: TTS 음성 트랙 연결 시점
-- `notifyAudioCompositeChange`: 멘토 음성 + TTS 음성의 합성 계획 갱신
+- `notifyAudioCompositeChange`: 멘토 음성 + 멘티 음성 + TTS 음성 합성 계획 갱신
 
 이 지점에서 다음 구현을 붙일 수 있습니다.
 
