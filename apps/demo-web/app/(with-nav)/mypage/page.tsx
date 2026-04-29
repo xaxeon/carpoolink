@@ -88,7 +88,7 @@ export default function MyPage() {
         </Link>
 
         {/* 💡 추가됨: 스크립트 목록 버튼 */}
-        <Link href="#" className="flex items-center justify-between py-4 group">
+        <Link href="/mypage/scripts" className="flex items-center justify-between py-4 group">
           <div className="flex items-center gap-3">
             <ScrollText className="w-[22px] h-[22px] text-gray-500 group-hover:text-[#1A1A1A] transition-colors" strokeWidth={2} />
             <span className="text-[16px] font-medium group-hover:font-bold transition-all">스크립트 목록</span>
