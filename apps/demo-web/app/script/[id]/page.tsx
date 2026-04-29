@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+// 💡 1. params Promise를 풀기 위해 React에서 'use'를 추가로 불러옵니다.
+import { useState, useEffect, useRef, use } from "react";
 import Link from "next/link";
 import { ChevronLeft, Undo2, Save, Send, Bell, MousePointer2, Grab, Eraser, EyeOff } from "lucide-react";
 
-// 💡 [핵심 수정]: params 객체를 통해 동적 라우팅 [id] 값을 받아옵니다.
-export default function ScriptEditPage({ params }: { params: { id: string } }) {
+// 💡 2. params의 타입을 Promise로 감싸줍니다.
+export default function ScriptEditPage({ params }: { params: Promise<{ id: string }> }) {
+  // 💡 3. use() 훅을 사용하여 비동기 params 객체에서 id 값을 안전하게 꺼냅니다.
+  const { id } = use(params);
+
   const [isMenteeView, setIsMenteeView] = useState(false);
   const [isPublishPopupOpen, setIsPublishPopupOpen] = useState(false);
   
@@ -102,8 +106,9 @@ export default function ScriptEditPage({ params }: { params: { id: string } }) {
 
       <header className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0 bg-white z-10">
         <div className="flex items-center gap-3">
-          <Link href="/" className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
-            <img src="/icons/arrow.svg" alt="화살표 아이콘" className="w-5 h-5 text-[#FFCC00]" />
+          {/* 뒤로 가기 버튼: 브라우저 환경을 고려해 단순 링크에서 router.back() 등을 사용할 수도 있습니다. */}
+          <Link href="/mypage/scripts" className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
+            <ChevronLeft className="w-6 h-6 text-[#1A1A1A]" strokeWidth={2.5} />
           </Link>
           <h1 className="text-[17px] font-extrabold tracking-tight">스크립트 편집 & 리뷰</h1>
         </div>
@@ -156,8 +161,8 @@ export default function ScriptEditPage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-8 bg-white custom-scrollbar">
-        {/* 💡 URL의 [id] 값을 활용하여 화면에 세션 번호를 표시할 수 있습니다. */}
-        <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase">Script ID: {params.id}</p>
+        {/* 💡 4. 위에서 use()로 꺼낸 id를 직접 사용합니다. */}
+        <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase">Script ID: {id}</p>
         
         <h2 className="text-3xl font-extrabold text-[#1A1A1A] leading-tight mb-8">
           Mentoring Summary - Mar 25, 2026
