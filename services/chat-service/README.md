@@ -26,8 +26,14 @@ npm run dev -w services/chat-service
 ### HTTP
 
 - `GET /health`
+    
+    서버 상태 확인
 - `GET /chats/:mentoringId/messages?limit=&offset=`
+    
+    메시지 내역 조회: 실시간 조회가 느린 경우에 사용할 수 있음
 - `GET /chats/:mentoringId/info`
+    
+    채팅룸 정보 조회: 멘토링 정보와 채팅 개수
 
 ### Socket Events
 

@@ -1,10 +1,25 @@
-import { saveChatMessage, getMentoringStatus } from '../database/chatRepository.js';
+import {
+    saveChatMessage,
+    getMentoringStatus,
+    verifyChatJoinAccess,
+} from '../database/chatRepository.js';
 
 const activeConnections = new Map(); // userId(string) -> Set<socketId>
 const socketStates = new Map(); // socketId -> { userId, userName, mentoringId }
 const activeMentoringRooms = new Set(); // mentoringId(string)
 
 function parseMentoringId(value) {
+    try {
+        if (value === undefined || value === null || value === '') {
+            return null;
+        }
+        return BigInt(value);
+    } catch {
+        return null;
+    }
+}
+
+function parseUserId(value) {
     try {
         if (value === undefined || value === null || value === '') {
             return null;
@@ -35,6 +50,29 @@ async function assertMentoringOnAir(mentoringIdInput) {
     }
 
     return { ok: true, mentoringId };
+}
+
+async function assertChatJoinAccess(mentoringIdInput, userIdInput) {
+    const mentoringId = parseMentoringId(mentoringIdInput);
+    if (!mentoringId) {
+        return { ok: false, error: '유효하지 않은 멘토링 ID입니다.' };
+    }
+
+    const userId = parseUserId(userIdInput);
+    if (!userId) {
+        return { ok: false, error: '유효하지 않은 사용자 ID입니다.' };
+    }
+
+    const access = await verifyChatJoinAccess(mentoringId, userId);
+    if (!access.ok) {
+        return access;
+    }
+
+    return {
+        ok: true,
+        mentoringId,
+        userId,
+    };
 }
 
 function getSocketRoomUserCount(io, mentoringId) {
@@ -109,27 +147,44 @@ export async function closeCompletedMentoringRooms(io) {
 export async function handleConnection(socket, io) {
     console.log(`[Socket] New connection: ${socket.id}`);
 
+    function replyJoinAck(callback, payload) {
+        if (typeof callback === 'function') {
+            callback(payload);
+        }
+    }
+
     /**
      * 채팅룸 입장
      * 클라이언트에서 전송: { mentoringId, userId, userName }
      */
-    socket.on('join_chat', async (data) => {
+    socket.on('join_chat', async (data, callback) => {
         try {
             const { mentoringId, userId, userName } = data;
 
             if (!mentoringId || !userId) {
-                socket.emit('error', { message: '유효하지 않은 파라미터입니다.' });
+                const errorPayload = { message: '유효하지 않은 파라미터입니다.' };
+                socket.emit('error', errorPayload);
+                replyJoinAck(callback, { ok: false, error: errorPayload.message });
                 return;
             }
 
-            const mentoringCheck = await assertMentoringOnAir(mentoringId);
-            if (!mentoringCheck.ok) {
-                socket.emit('error', { message: mentoringCheck.error });
+            const existingState = socketStates.get(socket.id);
+            if (existingState) {
+                const errorPayload = { message: '이미 채팅방에 입장해 있습니다. 먼저 leave_chat을 호출하세요.' };
+                socket.emit('error', errorPayload);
+                replyJoinAck(callback, { ok: false, error: errorPayload.message });
                 return;
             }
 
-            const mentoringKey = mentoringCheck.mentoringId.toString();
-            const userKey = String(userId);
+            const access = await assertChatJoinAccess(mentoringId, userId);
+            if (!access.ok) {
+                socket.emit('error', { message: access.error });
+                replyJoinAck(callback, { ok: false, error: access.error });
+                return;
+            }
+
+            const mentoringKey = access.mentoringId.toString();
+            const userKey = access.userId.toString();
 
             const roomName = getRoomName(mentoringKey);
             socket.join(roomName);
@@ -141,7 +196,7 @@ export async function handleConnection(socket, io) {
             activeConnections.get(userKey).add(socket.id);
             socketStates.set(socket.id, {
                 userId: userKey,
-                userName,
+                userName: userName || 'anonymous',
                 mentoringId: mentoringKey,
             });
             activeMentoringRooms.add(mentoringKey);
@@ -156,9 +211,18 @@ export async function handleConnection(socket, io) {
             });
 
             console.log(`[Chat] User ${userKey} joined room ${mentoringKey}`);
+            replyJoinAck(callback, {
+                ok: true,
+                data: {
+                    mentoringId: mentoringKey,
+                    userId: userKey,
+                },
+            });
         } catch (error) {
             console.error('Error in join_chat:', error);
-            socket.emit('error', { message: '채팅방에 입장하는 데 실패했습니다.' });
+            const errorPayload = { message: '채팅방에 입장하는 데 실패했습니다.' };
+            socket.emit('error', errorPayload);
+            replyJoinAck(callback, { ok: false, error: errorPayload.message });
         }
     });
 
@@ -168,9 +232,15 @@ export async function handleConnection(socket, io) {
      */
     socket.on('send_message', async (data) => {
         try {
-            const { mentoringId, userId, userName, content } = data;
+            const { mentoringId, content } = data;
+            const state = socketStates.get(socket.id);
 
-            if (!mentoringId || !userId || !content) {
+            if (!state) {
+                socket.emit('error', { message: '먼저 채팅방에 입장해야 합니다.' });
+                return;
+            }
+
+            if (!mentoringId || !content) {
                 socket.emit('error', { message: '유효하지 않은 메시지 데이터입니다.' });
                 return;
             }
@@ -181,13 +251,12 @@ export async function handleConnection(socket, io) {
                 return;
             }
 
-            const mentoringCheck = await assertMentoringOnAir(mentoringId);
-            if (!mentoringCheck.ok) {
-                socket.emit('error', { message: mentoringCheck.error });
+            const mentoringKey = String(mentoringId);
+            if (state.mentoringId !== mentoringKey) {
+                socket.emit('error', { message: '입장한 채팅방과 다른 mentoringId 입니다.' });
                 return;
             }
 
-            const mentoringKey = mentoringCheck.mentoringId.toString();
             const roomName = getRoomName(mentoringKey);
             if (!socket.rooms.has(roomName)) {
                 socket.emit('error', { message: '먼저 채팅방에 입장해야 합니다.' });
@@ -196,8 +265,8 @@ export async function handleConnection(socket, io) {
 
             // 데이터베이스에 메시지 저장
             const chatMessage = await saveChatMessage({
-                mentoringId: mentoringCheck.mentoringId,
-                userId: BigInt(userId),
+                mentoringId: BigInt(state.mentoringId),
+                userId: BigInt(state.userId),
                 content,
             });
 
@@ -205,8 +274,8 @@ export async function handleConnection(socket, io) {
             io.to(roomName).emit('new_message', {
                 mentoringChatId: chatMessage.mentoringChatId.toString(),
                 mentoringId: chatMessage.mentoringId.toString(),
-                userId,
-                userName,
+                userId: state.userId,
+                userName: state.userName,
                 content,
                 createdAt: chatMessage.createdAt,
             });
@@ -223,16 +292,22 @@ export async function handleConnection(socket, io) {
     socket.on('get_message_history', async (data) => {
         try {
             const { mentoringId, limit = 50, offset = 0 } = data;
+            const state = socketStates.get(socket.id);
 
-            const mentoringCheck = await assertMentoringOnAir(mentoringId);
-            if (!mentoringCheck.ok) {
-                socket.emit('error', { message: mentoringCheck.error });
+            if (!state) {
+                socket.emit('error', { message: '먼저 채팅방에 입장해야 합니다.' });
+                return;
+            }
+
+            const mentoringKey = String(mentoringId);
+            if (state.mentoringId !== mentoringKey) {
+                socket.emit('error', { message: '입장한 채팅방과 다른 mentoringId 입니다.' });
                 return;
             }
 
             // Prisma에서 메시지 히스토리 조회
             const messages = await global.prisma.mentoringChat.findMany({
-                where: { mentoringId: mentoringCheck.mentoringId },
+                where: { mentoringId: BigInt(state.mentoringId) },
                 include: {
                     user: {
                         select: { userId: true, nickname: true },
@@ -266,14 +341,19 @@ export async function handleConnection(socket, io) {
     socket.on('get_online_users', async (data) => {
         try {
             const { mentoringId } = data;
+            const state = socketStates.get(socket.id);
 
-            const mentoringCheck = await assertMentoringOnAir(mentoringId);
-            if (!mentoringCheck.ok) {
-                socket.emit('error', { message: mentoringCheck.error });
+            if (!state) {
+                socket.emit('error', { message: '먼저 채팅방에 입장해야 합니다.' });
                 return;
             }
 
-            const mentoringKey = mentoringCheck.mentoringId.toString();
+            const mentoringKey = String(mentoringId);
+            if (state.mentoringId !== mentoringKey) {
+                socket.emit('error', { message: '입장한 채팅방과 다른 mentoringId 입니다.' });
+                return;
+            }
+
             const userCount = getSocketRoomUserCount(io, mentoringKey);
 
             socket.emit('online_users', {
@@ -295,19 +375,29 @@ export async function handleConnection(socket, io) {
      */
     socket.on('leave_chat', async (data) => {
         try {
-            const { mentoringId, userId, userName } = data;
+            const state = socketStates.get(socket.id);
+            if (!state) {
+                return;
+            }
 
-            if (!mentoringId || !userId) {
+            const { mentoringId } = data;
+
+            if (!mentoringId) {
                 socket.emit('error', { message: '유효하지 않은 파라미터입니다.' });
                 return;
             }
 
             const mentoringKey = String(mentoringId);
+            if (state.mentoringId !== mentoringKey) {
+                socket.emit('error', { message: '입장한 채팅방과 다른 mentoringId 입니다.' });
+                return;
+            }
+
             const roomName = getRoomName(mentoringKey);
             socket.leave(roomName);
 
             // 활성 연결 제거
-            removeSocketTracking(socket.id);
+            const removedState = removeSocketTracking(socket.id);
 
             // 나간 사용자 알림
             const userCount = getSocketRoomUserCount(io, mentoringKey);
@@ -316,13 +406,13 @@ export async function handleConnection(socket, io) {
             }
 
             io.to(roomName).emit('user_left', {
-                userId,
-                userName,
+                userId: removedState?.userId ?? state.userId,
+                userName: removedState?.userName ?? state.userName,
                 userCount,
                 timestamp: new Date(),
             });
 
-            console.log(`[Chat] User ${userId} left room ${mentoringId}`);
+            console.log(`[Chat] User ${removedState?.userId ?? state.userId} left room ${mentoringId}`);
         } catch (error) {
             console.error('Error in leave_chat:', error);
         }

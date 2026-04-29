@@ -130,20 +130,32 @@ export default function ChatTestPage() {
             return;
         }
 
-        socket.emit('join_chat', {
-            mentoringId: mentoringId.trim(),
-            userId: userId.trim(),
-            userName: userName.trim() || 'anonymous',
-        });
-
-        socket.emit('get_message_history', {
-            mentoringId: mentoringId.trim(),
-            limit: 100,
-            offset: 0,
-        });
-
-        setJoined(true);
         addLog(`채팅방 입장 시도: mentoringId=${mentoringId}`);
+
+        socket.emit(
+            'join_chat',
+            {
+                mentoringId: mentoringId.trim(),
+                userId: userId.trim(),
+                userName: userName.trim() || 'anonymous',
+            },
+            (ack: { ok?: boolean; error?: string }) => {
+                if (!ack?.ok) {
+                    addLog(`채팅방 입장 실패: ${ack?.error ?? 'unknown error'}`);
+                    setJoined(false);
+                    return;
+                }
+
+                setJoined(true);
+                addLog('채팅방 입장 성공');
+
+                socket.emit('get_message_history', {
+                    mentoringId: mentoringId.trim(),
+                    limit: 100,
+                    offset: 0,
+                });
+            }
+        );
     }
 
     function leaveChat() {

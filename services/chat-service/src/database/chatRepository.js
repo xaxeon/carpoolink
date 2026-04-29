@@ -141,4 +141,54 @@ export async function getMentoringStatus(mentoringId) {
     }
 }
 
+/**
+ * 채팅 입장 권한 확인
+ * - 멘토링이 존재해야 함
+ * - 상태가 ON_AIR 이어야 함
+ * - 주관 멘토이거나 mentoring_histories 참여자여야 함
+ */
+export async function verifyChatJoinAccess(mentoringId, userId) {
+    try {
+        const mentoring = await prisma.mentoring.findUnique({
+            where: { mentoringId },
+            select: {
+                mentoringId: true,
+                status: true,
+                userId: true,
+            },
+        });
+
+        if (!mentoring) {
+            return { ok: false, error: '해당 멘토링이 존재하지 않습니다.' };
+        }
+
+        if (mentoring.status !== 'ON_AIR') {
+            return { ok: false, error: `현재 멘토링 상태(${mentoring.status})에서는 채팅할 수 없습니다.` };
+        }
+
+        if (mentoring.userId === userId) {
+            return { ok: true, mentoringId };
+        }
+
+        const history = await prisma.mentoringHistory.findFirst({
+            where: {
+                mentoringId,
+                userId,
+            },
+            select: {
+                mentoringHistoryId: true,
+            },
+        });
+
+        if (!history) {
+            return { ok: false, error: '멘토링 참여자만 채팅할 수 있습니다.' };
+        }
+
+        return { ok: true, mentoringId };
+    } catch (error) {
+        console.error('Error verifying chat join access:', error);
+        throw error;
+    }
+}
+
 export { prisma };
