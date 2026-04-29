@@ -27,6 +27,7 @@ npm run dev -w services/media-server
 멘토링 세션을 시작합니다. DB(Prisma) 연결이 가능하면 `mentorings` 테이블에 레코드를 생성합니다.
 DB 연결이 불가하면 in-memory 저장소로 fallback 합니다.
 반환된 mentoringId로 이후 동작을 수행합니다.
+클라이언트의 카메라/마이크 존재 여부를 확인 후 요청해야합니다.
 
 요청 헤더:
 
@@ -37,7 +38,9 @@ Request example:
 ```json
 {
 	"title": "프론트엔드 커리어 멘토링",
-	"isGroup": false
+	"isGroup": false,
+	"hasCamera": true,
+	"hasMicrophone": true
 }
 ```
 
@@ -45,6 +48,7 @@ Request example:
 
 - `x-user-id`로 사용자 조회
 - 사용자 role이 `MENTOR`인지 검증
+- 카메라와 마이크가 모두 준비된 경우에만 멘토링 생성
 - 검증 통과 시 멘토링 생성
 
 ### `POST /mentorings/:mentoringId/end`

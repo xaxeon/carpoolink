@@ -34,6 +34,22 @@ function parseUserIdFromRequest(req) {
     }
 }
 
+function parseBooleanField(value) {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (value === 'true') {
+        return true;
+    }
+
+    if (value === 'false') {
+        return false;
+    }
+
+    return null;
+}
+
 // [GET] /health: 서비스 상태 확인
 app.get('/health', (req, res) => {
     res.json({
@@ -48,6 +64,8 @@ app.post('/mentorings/start', async (req, res) => {
     try {
         const { title, isGroup = true } = req.body ?? {};
         const userId = parseUserIdFromRequest(req);
+        const hasCamera = parseBooleanField(req.body?.hasCamera);
+        const hasMicrophone = parseBooleanField(req.body?.hasMicrophone);
 
         if (!title) {
             return res.status(400).json({
@@ -58,6 +76,18 @@ app.post('/mentorings/start', async (req, res) => {
         if (userId === null) {
             return res.status(400).json({
                 message: 'x-user-id 헤더가 필요합니다.'
+            });
+        }
+
+        if (isGroup) {
+            if (hasCamera !== true || hasMicrophone !== true) {
+                return res.status(400).json({
+                    message: '1:N 멘토링을 시작하려면 카메라와 마이크가 모두 필요합니다.'
+                });
+            }
+        } else if (hasMicrophone !== true) {
+            return res.status(400).json({
+                message: '1:1 멘토링을 시작하려면 마이크가 필요합니다.'
             });
         }
 
