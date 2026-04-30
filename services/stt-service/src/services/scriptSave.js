@@ -6,7 +6,10 @@ import { prisma } from "@carpoolink/database"
  * @param {{ text: string, chunkIndex: number, startTime?: number, endTime?: number }} chunk
  * @param {{ userId: bigint, mentoringId: bigint }} meta
  */
-export async function saveScript({ text, chunkIndex, startTime, endTime }, { userId, mentoringId }) {
+export async function saveScript(
+  { text, chunkIndex, startTime, endTime, isPrivate = false },
+  { userId, mentoringId }
+) {
   return await prisma.script.create({
     data: {
       content: {
@@ -15,7 +18,7 @@ export async function saveScript({ text, chunkIndex, startTime, endTime }, { use
         startTime: startTime ?? null,
         endTime: endTime ?? null,
       },
-      isPrivate: false,
+      isPrivate,
       userId: BigInt(userId),
       mentoringId: BigInt(mentoringId),
     },

@@ -71,6 +71,21 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
       return res.status(400).json({ error: "audio, userId, mentoringId는 필수입니다." });
     }
 
+    // 멘토링 정보 조회
+    const mentoring = await prisma.mentoring.findUnique({
+      where: { mentoringId: BigInt(mentoringId) },
+    });
+
+    if (!mentoring) {
+      return res.status(404).json({ error: "멘토링을 찾을 수 없습니다." });
+    }
+
+    // 발화자 userId 결정(1:N인 경우 멘토로 고정)
+    const speakerUserId = mentoring.isGroup ? mentoring.userId.toString() : userId;
+
+    // 현재 비공개 질문/답변 여부는 false로 기본값 설정. 질문 관리 상태를 먼저 알아야 함
+    const isPrivate = false;
+
     // 1. 청크 분할
     const chunks = await splitAudioIntoChunks(req.file.buffer, req.file.mimetype);
 
@@ -86,8 +101,14 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
       const text = await transcribeAudio(audioFile);
 
       const saved = await saveScript(
-        { text, chunkIndex: chunk.index, startTime: chunk.startTime, endTime: chunk.endTime },
-        { userId, mentoringId }
+        {
+          text,
+          chunkIndex: chunk.index,
+          startTime: chunk.startTime,
+          endTime: chunk.endTime,
+          isPrivate,
+        },
+        { userId: speakerUserId, mentoringId }
       );
 
       results.push({
@@ -95,11 +116,18 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
         chunkIndex: chunk.index,
         startTime: chunk.startTime,
         endTime: chunk.endTime,
+        speakerUserId,
         text,
       });
     }
 
-    res.json({ mentoringId, totalChunks: chunks.length, scripts: results });
+    res.json({
+      mentoringId,
+      isGroup: mentoring.isGroup,
+      speakerUserId,
+      totalChunks: chunks.length,
+      scripts: results
+    });
   } catch (err) {
     console.error("[STT UPLOAD ERROR]", err);
     res.status(500).json({ error: err.message });
