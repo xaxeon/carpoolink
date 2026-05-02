@@ -1,7 +1,10 @@
 # 1단계: 빌드
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
+
+# mediasoup prebuilt 실패 시 로컬 빌드를 위한 의존성
+RUN apk add --no-cache python3 py3-pip make g++ linux-headers && ln -sf python3 /usr/bin/python
 
 # 의존성 설치
 COPY package.json package-lock.json ./
@@ -13,7 +16,7 @@ RUN npm ci --workspace services/media-server --include-workspace-root
 WORKDIR /app/services/media-server
 
 # 2단계: 실행
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 ENV TZ=Asia/Seoul
