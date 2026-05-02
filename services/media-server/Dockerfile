@@ -5,7 +5,7 @@ WORKDIR /app
 
 # mediasoup prebuilt 실패 시 로컬 빌드를 위한 의존성
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-pip make g++ pkg-config \
+    && apt-get install -y --no-install-recommends python3 python3-pip make g++ pkg-config openssl ca-certificates \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,6 +26,8 @@ WORKDIR /app/services/media-server
 # 2단계: 실행
 FROM node:22-bookworm-slim
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
