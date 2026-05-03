@@ -42,7 +42,7 @@ enum MentoringStatus {
   COMPLETED
 }
 
-// 2. 모델 정의
+// 모델 정의
 
 // 사용자 테이블
 model User {
