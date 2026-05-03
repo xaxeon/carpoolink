@@ -177,6 +177,12 @@ jobs:
             
             # Core API 배포
             docker pull ghcr.io/${{ env.REPO_OWNER }}/core-api:${{ github.sha }} && \
+            docker run --rm \
+              --name carpoolink-db-sync \
+              --network carpoolink-network \
+              --env-file /app/.env \
+              ghcr.io/${{ env.REPO_OWNER }}/core-api:${{ github.sha }} \
+              sh -lc 'npx prisma db push --schema=/app/packages/database/prisma/schema.prisma --skip-generate --accept-data-loss && npx prisma db seed --schema=/app/packages/database/prisma/schema.prisma' && \
             docker run --restart always \
               -d --name carpoolink-core-api \
               -p 4000:4000 \
