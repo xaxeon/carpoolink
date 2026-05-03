@@ -1,0 +1,6 @@
+outs:
+- md5: 1f600256ba640f66298e3fd0f1218903.dir
+  size: 2274623265
+  nfiles: 52
+  hash: md5
+  path: question_detection

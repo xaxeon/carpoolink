@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Dict, List
 
 
-PROJECT_ROOT = Path(r"C:\Users\admin\Desktop\2026 캡스톤디자인\Capstone\carpoolink")
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent
 
 INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "question_detection" / "candidate"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "interim" / "question_detection" / "merged"

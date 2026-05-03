@@ -1,2 +1,5 @@
 /tfidf_lr_threshold
 /tfidf_lr
+/benchmark_full
+/benchmark_smoke
+/benchmark_npm_smoke

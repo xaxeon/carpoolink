@@ -21,6 +21,7 @@
     "dev:chat": "npm run dev -w services/chat-service",
     "dev:question": "npm run dev -w services/question-service",
     "dev:stt": "npm run dev -w services/stt-service",
+    "benchmark:question": "..\\venv\\Scripts\\python.exe services/question-service/scripts/benchmark_question_detection.py",
     "test": "npm run test -ws --if-present"
   },
   "keywords": [],
