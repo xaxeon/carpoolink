@@ -34,21 +34,30 @@ export default function MyPage() {
 
   // 💡 데이터 연동 및 접근 제어 로직
   useEffect(() => {
-    
+    // 1. 미로그인 접근 차단 (Private Route)
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      alert("로그인이 필요한 서비스입니다.");
+      router.push("/login"); // 로그인 페이지로 리다이렉트
+      return;
+    }
 
-    // 2. 서버 데이터 호출
+    // 💡 2. 데이터 통신 함수 수정
     const fetchUserData = async () => {
       try {
-        const response = await apiClient.get("/users/me");
+        // 배포된 Core API(포트 4000)로 내 정보(/users/me)를 요청합니다.
+        // 인터셉터가 알아서 IP 주소와 신분증(x-user-id)을 붙여서 날려줍니다!
+        const userRes = await apiClient.get("/users/me");
         
-        // 백엔드 응답 데이터를 상태에 저장
+        // 서버에서 받아온 응답(userRes.data)을 상태에 예쁘게 담아줍니다.
         setUser({
-          nickname: response.data.nickname || "사용자",
-          remainingTickets: response.data.tickets ?? 0,
-          surveyType: response.data.surveyType ?? "유형 없음",
+          nickname: userRes.data.nickname || "사용자",
+          remainingTickets: userRes.data.tickets ?? 0,
+          surveyType: userRes.data.surveyType ?? "유형 없음",
         });
       } catch (error) {
-        console.error("사용자 정보를 불러오는 데 실패했습니다.", error);
+        // 401, 403 에러는 apiClient의 응답 인터셉터가 알아서 잡아서 로그인 페이지로 튕겨냅니다.
+        console.error("마이페이지 데이터 호출 실패:", error);
       } finally {
         setIsLoading(false);
       }
