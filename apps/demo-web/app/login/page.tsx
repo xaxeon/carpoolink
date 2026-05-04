@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
-  // 💡 async 함수로 변경하여 API 통신을 기다릴 수 있게 합니다.
+// 💡 async 함수로 변경하여 API 통신을 기다릴 수 있게 합니다.
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
@@ -25,31 +25,44 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // 💡 [임시 우회 적용] POST /login 대신 GET /users/exists 엔드포인트를 찌릅니다.
-      // 백엔드 미들웨어(getUserIdFromRequest)가 헤더에서 값을 찾으므로 headers에 담아줍니다.
+      // 💡 1. [임시 우회 적용] POST /login 대신 GET /users/exists 엔드포인트를 찌릅니다.
       const response = await apiClient.get("/users/exists", {
         headers: {
           "x-user-id": userId,
         },
       });
 
-      // 1. DB에 해당 유저가 존재하는 경우 (exists === true)
+      // DB에 해당 유저가 존재하는 경우 (exists === true)
       if (response.data.exists) {
-        // 로컬 스토리지에 백엔드에서 확인된 실제 userId를 저장하여 "로그인 상태"로 만듭니다.
+        // 로컬 스토리지에 백엔드에서 확인된 실제 userId를 저장
         localStorage.setItem("userId", response.data.user.userId.toString());
 
-        // 💡 참고: 현재 /users/exists API는 설문(surveyType) 데이터를 반환하지 않습니다.
-        // 따라서 임시 우회 상태에서는 세부 분기 처리를 생략하고, 
-        // 일단 모두 홈("/")으로 통과시키도록 처리했습니다.
-        router.push("/");
+        // 💡 2. 설문조사 여부 확인 로직 추가
+        try {
+          // 방금 로컬 스토리지에 저장한 userId를 기반으로 내 상세 정보(/users/me)를 불러옵니다.
+          const meResponse = await apiClient.get("/users/me");
+          const userData = meResponse.data;
+
+          // 유저가 멘티(MENTEE)이면서, 설문결과(surveyResult)가 없는 경우 /survey로 튕겨냅니다.
+          if (userData.role === "MENTEE" && !userData.menteeProfile?.surveyResult) {
+            router.push("/survey");
+          } else {
+            // 멘토이거나 이미 설문을 완료한 멘티인 경우 홈으로 이동
+            router.push("/");
+          }
+        } catch (meError) {
+          console.error("유저 상세 정보 호출 실패:", meError);
+          // 만약 상세 정보 호출에 실패하더라도 일단 로그인은 된 상태이므로 홈으로 보냅니다.
+          router.push("/");
+        }
+
       } else {
-        // 2. DB에 유저가 없는 경우 (exists === false)
+        // DB에 유저가 없는 경우 (exists === false)
         setErrorMsg("존재하지 않는 아이디입니다.");
       }
 
     } catch (error: any) {
       console.error("로그인 실패:", error);
-      // 서버가 죽었거나 네트워크 통신 자체가 실패했을 때의 에러 처리
       setErrorMsg("서버 통신 중 오류가 발생했습니다.");
     } finally {
       setIsLoading(false);
