@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
   Settings, 
@@ -13,7 +15,57 @@ import {
   MessageSquare 
 } from "lucide-react";
 
+// 💡 API 통신을 위한 apiClient 임포트 (경로는 실제 위치에 맞게 수정하세요)
+import apiClient from "@/lib/apiClient"; 
+
+// 서버에서 받아올 사용자 데이터 타입 정의
+interface UserProfile {
+  nickname: string;
+  remainingTickets: number; 
+  surveyType: string;       
+}
+
 export default function MyPage() {
+  const router = useRouter();
+  
+  // 💡 상태 관리 추가
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 💡 데이터 연동 및 접근 제어 로직
+  useEffect(() => {
+    
+
+    // 2. 서버 데이터 호출
+    const fetchUserData = async () => {
+      try {
+        const response = await apiClient.get("/users/me");
+        
+        // 백엔드 응답 데이터를 상태에 저장
+        setUser({
+          nickname: response.data.nickname || "사용자",
+          remainingTickets: response.data.tickets ?? 0,
+          surveyType: response.data.surveyType ?? "유형 없음",
+        });
+      } catch (error) {
+        console.error("사용자 정보를 불러오는 데 실패했습니다.", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [router]);
+
+  // 로딩 중일 때 보여줄 UI (기존 디자인 무너짐 방지)
+  if (isLoading || !user) {
+    return (
+      <main className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans min-h-[100dvh] pb-[80px] items-center justify-center">
+        <p className="text-gray-500 font-medium">데이터를 불러오는 중입니다... ⏳</p>
+      </main>
+    );
+  }
+
   return (
     <main className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans min-h-[100dvh] pb-[80px]">
       
@@ -33,12 +85,16 @@ export default function MyPage() {
           <span className="text-[10px] font-bold tracking-widest">—O—O—</span>
         </div>
         
-        {/* 💡 수정됨: flex-col 대신 flex items-center를 사용하여 닉네임과 뱃지를 가로로 배치합니다. */}
         <div className="flex items-center gap-2">
-          <h2 className="text-[20px] font-semibold tracking-tight">김세종</h2>
-          <span className="inline-block bg-[#FFCC00] text-black text-[12px] font-semibold px-2.5 py-1 rounded-md w-fit">
-            창의적인 모험가
-          </span>
+          {/* 💡 하드코딩 제거: 서버에서 받아온 닉네임 렌더링 */}
+          <h2 className="text-[20px] font-semibold tracking-tight">{user.nickname}</h2>
+          
+          {/* 💡 하드코딩 제거: 서버에서 받아온 유형 뱃지 렌더링 */}
+          {user.surveyType !== "유형 없음" && (
+            <span className="inline-block bg-[#FFCC00] text-black text-[12px] font-semibold px-2.5 py-1 rounded-md w-fit">
+              {user.surveyType}
+            </span>
+          )}
         </div>
       </div>
 
@@ -46,7 +102,10 @@ export default function MyPage() {
       <div className="mx-5 mb-8 bg-[#F8F9FA] rounded-2xl p-4 flex items-center justify-between border border-gray-100 shadow-sm">
         <span className="text-[15px] font-bold text-gray-700 ml-1">사전 질문권 개수</span>
         <div className="flex items-center gap-3">
-          <span className="text-[18px] font-extrabold">5 <span className="text-[14px] font-medium text-gray-500">개</span></span>
+          {/* 💡 하드코딩 제거: 서버에서 받아온 티켓 수 렌더링 */}
+          <span className="text-[18px] font-extrabold">
+            {user.remainingTickets} <span className="text-[14px] font-medium text-gray-500">개</span>
+          </span>
           <button className="bg-[#333333] hover:bg-black text-white text-[13px] font-bold px-4 py-2 rounded-lg transition-colors active:scale-95">
             충전
           </button>
