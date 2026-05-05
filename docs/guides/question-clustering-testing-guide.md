@@ -12,9 +12,7 @@
 
 작업 기준 디렉터리:
 
-```powershell
-cd C:\Users\admin\Desktop\Capstone_design_2026\Capstone\carpoolink
-```
+- `carpoolink`
 
 Python 실행 경로 예시:
 
@@ -269,4 +267,3 @@ services/question-service/outputs/question_clustering/full_processed_precheck/ca
 - Python subprocess 대신 상시 실행되는 Python worker 또는 FastAPI service로 모델을 한 번만 로드
 
 현재 PR 범위에서는 rule/hybrid incremental clustering, benchmark runner, API endpoint, 기본 hybrid 모드 제공까지를 다룹니다.
-
