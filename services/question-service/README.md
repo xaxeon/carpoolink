@@ -40,7 +40,7 @@ Request body:
     { "question_id": "q3", "text": "과제 제출일이 언제인가요?" }
   ],
   "threshold": 0.72,
-  "similarityMode": "rule"
+  "similarityMode": "hybrid"
 }
 ```
 
@@ -59,6 +59,6 @@ Response fields include `cluster_count`, `clusters`, and per-question
 - `QUESTION_ALWAYS_USE_KC_ELECTRA_ON_RULE_QUESTION`: `true` to force KC-ELECTRA confirmation for strong rule-question cases.
 - `QUESTION_CLUSTERING_SCRIPT_PATH`: override clustering API script path.
 - `QUESTION_CLUSTERING_THRESHOLD`: default clustering threshold.
-- `QUESTION_CLUSTERING_SIMILARITY_MODE`: `rule`, `hybrid`, or `embedding`.
+- `QUESTION_CLUSTERING_SIMILARITY_MODE`: `rule`, `hybrid`, or `embedding`. Defaults to `hybrid`.
 - `QUESTION_CLUSTERING_EMBEDDING_MODEL`: embedding model alias or Hugging Face model id.
 - `QUESTION_CLUSTERING_TIMEOUT_MS`: clustering subprocess timeout.

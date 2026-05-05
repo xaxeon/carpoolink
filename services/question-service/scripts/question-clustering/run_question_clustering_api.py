@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
         "--similarity-mode",
         type=str,
         choices=["rule", "hybrid", "embedding"],
-        default="rule",
+        default="hybrid",
     )
     parser.add_argument(
         "--embedding-model",

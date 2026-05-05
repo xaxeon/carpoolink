@@ -34,7 +34,7 @@ function getDefaultThreshold() {
 }
 
 function getDefaultSimilarityMode() {
-    return process.env.QUESTION_CLUSTERING_SIMILARITY_MODE || 'rule';
+    return process.env.QUESTION_CLUSTERING_SIMILARITY_MODE || 'hybrid';
 }
 
 function getDefaultEmbeddingModel() {
