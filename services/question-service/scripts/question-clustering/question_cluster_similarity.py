@@ -1,28 +1,9 @@
 from __future__ import annotations
 
 import re
-import sys
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from pathlib import Path
 from typing import Iterable
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-SCRIPTS_ROOT = SCRIPT_DIR.parent
-QUESTION_DETECTION_DIR = SCRIPTS_ROOT / "question-detection"
-
-if str(QUESTION_DETECTION_DIR) not in sys.path:
-    sys.path.insert(0, str(QUESTION_DETECTION_DIR))
-
-from preprocess_question_detection_for_tfidf import normalize_for_tfidf
-from question_detection_rules import extract_rule_features, safe_text
-
-try:
-    from sentence_transformers import SentenceTransformer
-    from sentence_transformers.util import cos_sim
-except ImportError:  # pragma: no cover - optional runtime dependency
-    SentenceTransformer = None
-    cos_sim = None
 
 
 DEFAULT_STOPWORDS = {
@@ -34,31 +15,93 @@ DEFAULT_STOPWORDS = {
     "좀",
     "수",
     "때",
-    "걸",
+    "건",
     "를",
     "을",
-    "은",
-    "는",
-    "이요",
+    "가",
     "요",
-    "좀요",
-    "혹시",
-    "약간",
+    "이에요",
+    "예요",
+    "주세요",
+    "다시",
+    "잠깐",
     "그냥",
     "진짜",
     "정말",
+    "한",
+    "번",
+    "더",
 }
 
 QUESTION_ENDING_NORMALIZATION_RULES = (
-    (r"(인가요|인가요\?)$", "인가요"),
-    (r"(일까요|일까요\?|일까여)$", "일까요"),
-    (r"(되나요|되나요\?)$", "되나요"),
-    (r"(할까요|할까요\?)$", "할까요"),
-    (r"(해야 할까요|해야할까요|해야 할까)$", "해야할까요"),
+    (r"(인가요|인가요\?|인가요\??)$", "인가"),
+    (r"(일까요|일까|일까요\?|일까\?)$", "일까"),
+    (r"(하나요|하나요\?|하나\?)$", "하나"),
+    (r"(될까요|될까|될까요\?|될까\?)$", "될까"),
+    (r"(해야 할까요|해야할까요|해야 할까)$", "해야할까"),
     (r"(궁금합니다|궁금한데요|궁금해요)$", "궁금합니다"),
 )
 
 TOKEN_PATTERN = re.compile(r"[0-9A-Za-z가-힣]+")
+REPEATED_KOREAN_JAMO_PATTERN = re.compile(r"([ㅋㅎㅠㅜㅡ])\1{2,}")
+REPEATED_PUNCTUATION_PATTERN = re.compile(r"([!?~])\1{2,}")
+URL_PATTERN = re.compile(r"https?://\S+|www\.\S+")
+EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+STRIP_SYMBOL_PATTERN = re.compile(r"[^0-9a-z가-힣\s?!.,]")
+KOREAN_PARTICLE_PATTERN = re.compile(r"(은|는|이|가|을|를|에|에서|으로|로|와|과|도|만|까지|부터)$")
+
+QUESTION_WORD_PATTERNS = (
+    r"무엇",
+    r"뭐",
+    r"무슨",
+    r"어떤",
+    r"어디",
+    r"언제",
+    r"왜",
+    r"어떻게",
+    r"얼마",
+    r"몇",
+    r"누구",
+    r"가능",
+    r"될까",
+    r"인가",
+)
+
+QUESTION_ENDING_PATTERNS = (
+    r"(나요|가요|까요|인가요|인가|죠|습니까|어요|해요)\??$",
+    r"(알려\s*주실\s*수\s*있나요|설명\s*해\s*주실\s*수\s*있나요)",
+)
+
+FORMAL_REQUEST_PATTERNS = (
+    r"알려\s*주",
+    r"설명\s*해\s*주",
+    r"말해\s*주",
+    r"보여\s*주",
+    r"확인\s*해\s*주",
+    r"추천\s*해\s*주",
+    r"부탁",
+)
+
+REACTION_PATTERNS = (
+    r"^아하+$",
+    r"^오+$",
+    r"^네+$",
+    r"^맞아+$",
+    r"^좋아+$",
+    r"^그렇구나$",
+)
+
+CANONICAL_PHRASE_REPLACEMENTS = (
+    (r"설명\s*해\s*주실\s*수\s*있나요", "설명"),
+    (r"설명\s*해\s*주세요", "설명"),
+    (r"설명해\s*주세요", "설명"),
+    (r"설명해주실\s*수\s*있나요", "설명"),
+    (r"알려\s*주실\s*수\s*있나요", "알려"),
+    (r"알려\s*주세요", "알려"),
+    (r"확인\s*해\s*주세요", "확인"),
+    (r"보여\s*주세요", "보여"),
+    (r"한\s*번\s*더", "다시"),
+)
 
 EMBEDDING_MODEL_ALIASES = {
     "distiluse": "sentence-transformers/distiluse-base-multilingual-cased-v2",
@@ -87,15 +130,19 @@ class SimilaritySignals:
 
 class EmbeddingSimilarityEngine:
     def __init__(self, model_name: str) -> None:
-        if SentenceTransformer is None or cos_sim is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            from sentence_transformers.util import cos_sim
+        except ImportError as error:  # pragma: no cover - optional runtime dependency
             raise ImportError(
                 "sentence-transformers is required for embedding clustering. "
                 "Install it with `pip install sentence-transformers`."
-            )
+            ) from error
 
         self.requested_model_name = model_name
         self.model_name = EMBEDDING_MODEL_ALIASES.get(model_name, model_name)
         self.model = SentenceTransformer(self.model_name)
+        self.cos_sim = cos_sim
         self.embedding_cache: dict[str, object] = {}
 
     def encode(self, text: str):
@@ -115,12 +162,36 @@ class EmbeddingSimilarityEngine:
     def similarity(self, text: str, candidate_text: str) -> float:
         source_embedding = self.encode(text)
         candidate_embedding = self.encode(candidate_text)
-        score = float(cos_sim(source_embedding, candidate_embedding).item())
+        score = float(self.cos_sim(source_embedding, candidate_embedding).item())
         return round(score, 4)
 
 
+def safe_text(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text.lower() == "nan":
+        return ""
+    return text
+
+
+def normalize_question_text(text: str) -> str:
+    normalized = safe_text(text).lower()
+    normalized = URL_PATTERN.sub(" [url] ", normalized)
+    normalized = EMAIL_PATTERN.sub(" [email] ", normalized)
+    normalized = REPEATED_KOREAN_JAMO_PATTERN.sub(r"\1\1", normalized)
+    normalized = REPEATED_PUNCTUATION_PATTERN.sub(r"\1\1", normalized)
+    normalized = re.sub(r"[\"'`|]+", " ", normalized)
+    normalized = STRIP_SYMBOL_PATTERN.sub(" ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
 def canonicalize_question_text(text: str) -> str:
-    canonical = normalize_for_tfidf(safe_text(text))
+    canonical = normalize_question_text(text)
+    for pattern, replacement in CANONICAL_PHRASE_REPLACEMENTS:
+        canonical = re.sub(pattern, replacement, canonical)
+
     canonical = canonical.replace("[url]", " ").replace("[email]", " ")
     canonical = re.sub(r"[!?.,]+", " ", canonical)
     canonical = re.sub(r"\s+", " ", canonical).strip()
@@ -131,10 +202,30 @@ def canonicalize_question_text(text: str) -> str:
     return canonical
 
 
+def normalize_keyword_token(token: str) -> str:
+    normalized = KOREAN_PARTICLE_PATTERN.sub("", token)
+    if normalized.startswith("설명"):
+        return "설명"
+    if normalized.startswith("알려"):
+        return "알려"
+    if normalized.startswith("확인"):
+        return "확인"
+    if normalized.startswith("보여"):
+        return "보여"
+    if normalized.endswith("인가요"):
+        return normalized[:-3] + "인가"
+    return normalized
+
+
 def extract_keyword_tokens(text: str) -> list[str]:
     canonical = canonicalize_question_text(text)
     tokens = TOKEN_PATTERN.findall(canonical)
-    return [token for token in tokens if token not in DEFAULT_STOPWORDS and len(token) > 1]
+    keyword_tokens = []
+    for token in tokens:
+        normalized = normalize_keyword_token(token)
+        if normalized not in DEFAULT_STOPWORDS and len(normalized) > 1:
+            keyword_tokens.append(normalized)
+    return keyword_tokens
 
 
 def _jaccard_similarity(left: set[str], right: set[str]) -> float:
@@ -263,25 +354,41 @@ def is_cluster_match(signals: SimilaritySignals, threshold: float = 0.72) -> boo
     ):
         return True
 
+    if (
+        signals.token_overlap_ratio >= 0.8
+        and signals.token_jaccard >= 0.5
+        and signals.shared_token_count >= 2
+    ):
+        return True
+
     if signals.embedding_score is not None and signals.embedding_score >= 0.84:
         return True
 
     return signals.final_score >= threshold
 
 
+def _contains_any_pattern(text: str, patterns: Iterable[str]) -> bool:
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
 def score_representative_question(text: str) -> float:
     normalized_text = safe_text(text)
-    features = extract_rule_features(normalized_text)
     keyword_tokens = extract_keyword_tokens(normalized_text)
+    has_question_mark = "?" in normalized_text
+    has_question_word = _contains_any_pattern(normalized_text, QUESTION_WORD_PATTERNS)
+    has_question_ending = _contains_any_pattern(normalized_text, QUESTION_ENDING_PATTERNS)
+    has_formal_request = _contains_any_pattern(normalized_text, FORMAL_REQUEST_PATTERNS)
+    has_reaction_like = _contains_any_pattern(normalized_text, REACTION_PATTERNS)
+    char_len = len(normalized_text)
 
     score = 0.0
-    score += min(features["char_len"], 60) / 60 * 0.25
+    score += min(char_len, 60) / 60 * 0.25
     score += min(len(keyword_tokens), 8) / 8 * 0.25
-    score += 0.2 if features["has_question_mark"] else 0.0
-    score += 0.15 if features["has_question_ending"] else 0.0
-    score += 0.10 if features["has_question_word"] else 0.0
-    score += 0.05 if features["has_formal_request"] else 0.0
-    score -= 0.10 if features["is_short_text"] else 0.0
-    score -= 0.10 if features["has_reaction_like"] else 0.0
+    score += 0.2 if has_question_mark else 0.0
+    score += 0.15 if has_question_ending else 0.0
+    score += 0.10 if has_question_word else 0.0
+    score += 0.05 if has_formal_request else 0.0
+    score -= 0.10 if char_len <= 6 else 0.0
+    score -= 0.10 if has_reaction_like else 0.0
 
     return round(score, 4)

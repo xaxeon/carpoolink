@@ -24,9 +24,9 @@ from question_cluster_similarity import (
     compute_similarity_signals,
     extract_keyword_tokens,
     is_cluster_match,
+    safe_text,
     score_representative_question,
 )
-from question_detection_rules import safe_text
 
 
 @dataclass
@@ -291,4 +291,3 @@ def print_summary(clusters: list[QuestionCluster], assignment_df: pd.DataFrame) 
         append_count = int((assignment_df["decision"] == "append_to_cluster").sum())
         print(f"[NEW CLUSTERS] {new_cluster_count}")
         print(f"[APPENDS] {append_count}")
-
