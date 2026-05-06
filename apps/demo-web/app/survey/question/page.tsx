@@ -84,9 +84,12 @@ export default function SurveyPage() {
       setIsSubmitting(true);
       try {
         // 1. 백엔드에 사용자의 모든 답변을 전송하여 저장 및 유형 판정 완료
-        await apiClient.post("/surveys/submit", { answers: updatedAnswers });
+        const res = await apiClient.post("/surveys/submit", { answers: updatedAnswers });
         
-        // 2. alert 창을 없애고 곧바로 로딩 페이지로 이동!
+        // 2. 💡 [추가된 코드] 백엔드에서 받은 결과(유형 제목 + 4가지 선택 답변)를 로컬 스토리지에 저장!
+        localStorage.setItem("surveyResultData", JSON.stringify(res.data));
+
+        // 3. alert 창을 없애고 곧바로 로딩 페이지로 이동!
         router.push("/survey/loading"); 
       } catch (error) {
         console.error("설문 제출 실패:", error);
