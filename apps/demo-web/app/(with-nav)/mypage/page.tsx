@@ -40,10 +40,14 @@ export default function MyPage() {
     const fetchUserData = async () => {
       try {
         const userRes = await apiClient.get("/users/me");
+        
+        // 💡 수정된 부분: 백엔드 응답 구조(menteeProfile)에 맞게 경로와 변수명을 변경했습니다.
         setUser({
           nickname: userRes.data.nickname || "사용자",
-          remainingTickets: userRes.data.tickets ?? 0,
-          surveyType: userRes.data.surveyType ?? "유형 없음",
+          // tickets 대신 menteeProfile.balance 사용
+          remainingTickets: userRes.data.menteeProfile?.balance ?? 0, 
+          // surveyType 대신 menteeProfile.surveyResult 사용
+          surveyType: userRes.data.menteeProfile?.surveyResult ?? "유형 없음", 
         });
       } catch (error) {
         console.error("마이페이지 데이터 호출 실패:", error);
