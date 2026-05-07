@@ -25,8 +25,7 @@ interface MentoringStream {
     nickname: string;
   };
   participantCount: number;
-  category: string; 
-  // 💡 기존의 thumbnailColor, profileColor는 정적 이미지로 통일하므로 제거했습니다.
+  category: string;
 }
 
 function LiveListContent() {
@@ -223,15 +222,11 @@ function LiveListContent() {
   );
 }
 
+// 💡 수정된 부분: 불필요한 key 재설정 로직을 제거하여 스크롤 상태와 렌더링을 유지합니다.
 export default function LiveListPage() {
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-
-  const uniqueKey = `${pathname}-${searchParams.toString()}`;
-
   return (
     <Suspense fallback={<div>Loading...</div>}>
-      <LiveListContent key={uniqueKey} />
+      <LiveListContent />
     </Suspense>
   );
 }
