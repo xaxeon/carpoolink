@@ -5,31 +5,38 @@ import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Search, ChevronDown, Users, Radio, Check, AlertCircle } from "lucide-react";
 
-// 데이터 부분 (이전과 동일)
-const LIVE_STREAMS = [
-  { id: 101, title: "신입 백엔드 포트폴리오 실시간 리뷰 & QnA", mentor: "AI네이티브개발자", category: "개발", viewers: 128, startTime: "2026-04-28T10:30:00Z", tags: ["백엔드", "포트폴리오", "취업"], thumbnailColor: "bg-blue-900", profileColor: "bg-blue-500" },
-  { id: 102, title: "실무에서 쓰이는 React 패턴 (주니어용)", mentor: "프론트엔드장인", category: "개발", viewers: 85, startTime: "2026-04-28T11:50:00Z", tags: ["프론트엔드", "React", "실무"], thumbnailColor: "bg-emerald-900", profileColor: "bg-emerald-500" },
-  { id: 103, title: "Unreal Engine 5 구조 설계 노하우 방송", mentor: "게임개발자K", category: "개발", viewers: 210, startTime: "2026-04-28T09:00:00Z", tags: ["게임개발", "언리얼"], thumbnailColor: "bg-purple-900", profileColor: "bg-purple-500" },
-  { id: 104, title: "주니어 기획자를 위한 역량 강화 가이드", mentor: "기획왕", category: "기획/PM", viewers: 45, startTime: "2026-04-28T11:15:00Z", tags: ["기획", "PM", "커리어"], thumbnailColor: "bg-orange-900", profileColor: "bg-orange-500" }
-];
+import apiClient from "@/lib/apiClient";
 
-const CATEGORIES = ["전체", "개발", "기획/PM", "디자인", "마케팅"];
+const CATEGORIES = ["전체", "업무", "일상", "보상", "성장", "커리어", "업계", "멘탈", "실전", "기타"];
 const SORT_OPTIONS = [
   { id: "viewers", label: "시청자 많은순" },
   { id: "newest", label: "최신순" },
   { id: "oldest", label: "오래된 순" },
 ];
 
+interface MentoringStream {
+  mentoringId: number;
+  title: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  host: {
+    userId: number;
+    nickname: string;
+  };
+  participantCount: number;
+  category: string; 
+  // 💡 기존의 thumbnailColor, profileColor는 정적 이미지로 통일하므로 제거했습니다.
+}
+
 function LiveListContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // 💡 [해결책 1] 하이드레이션 체크: 클라이언트 마운트 완료 확인
   const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const [streams, setStreams] = useState<MentoringStream[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const activeCategory = searchParams.get("category") || "전체";
   const sortBy = searchParams.get("sort") || "viewers";
@@ -37,6 +44,34 @@ function LiveListContent() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+
+    const fetchLiveStreams = async () => {
+      try {
+        const res = await apiClient.get("/mentorings/group", {
+          params: { status: "ON_AIR" }
+        });
+        
+        // 데이터 매핑 시 불필요한 색상 로직 제거
+        const fetchedData = res.data.mentorings.map((m: any) => {
+          return {
+            ...m,
+            category: "업무", // 백엔드에 카테고리가 추가되기 전까지 임시 고정
+          };
+        });
+
+        setStreams(fetchedData);
+      } catch (error) {
+        console.error("라이브 멘토링 목록 로딩 실패:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLiveStreams();
+  }, []);
 
   const handleCategoryClick = (category: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -54,19 +89,31 @@ function LiveListContent() {
   };
 
   const filteredAndSortedStreams = useMemo(() => {
-    let list = [...LIVE_STREAMS];
-    if (activeCategory !== "전체") list = list.filter(s => s.category === activeCategory);
+    let list = [...streams];
+    
+    if (activeCategory !== "전체") {
+      list = list.filter(s => s.category === activeCategory);
+    }
+    
     if (searchQuery.trim() !== "") {
       const q = searchQuery.toLowerCase();
-      list = list.filter(s => s.title.toLowerCase().includes(q) || s.mentor.toLowerCase().includes(q));
+      list = list.filter(s => 
+        s.title.toLowerCase().includes(q) || 
+        s.host.nickname.toLowerCase().includes(q)
+      );
     }
-    if (sortBy === "viewers") list.sort((a, b) => b.viewers - a.viewers);
-    else if (sortBy === "newest") list.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-    else if (sortBy === "oldest") list.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    
+    if (sortBy === "viewers") {
+      list.sort((a, b) => b.participantCount - a.participantCount);
+    } else if (sortBy === "newest") {
+      list.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    } else if (sortBy === "oldest") {
+      list.sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime());
+    }
+    
     return list;
-  }, [activeCategory, searchQuery, sortBy]);
+  }, [streams, activeCategory, searchQuery, sortBy]);
 
-  // 💡 마운트 전에는 레이아웃만 보여주고 클릭 이벤트가 포함된 UI는 마운트 후에 렌더링
   if (!isMounted) return <div className="w-full h-screen bg-white" />;
 
   return (
@@ -126,22 +173,39 @@ function LiveListContent() {
       </div>
 
       <div className="flex flex-col px-5 gap-6 pb-10 flex-1">
-        {filteredAndSortedStreams.length > 0 ? (
+        {isLoading ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-20">
+            <div className="w-8 h-8 border-4 border-gray-200 border-t-[#FFCC00] rounded-full animate-spin"></div>
+          </div>
+        ) : filteredAndSortedStreams.length > 0 ? (
           filteredAndSortedStreams.map((stream) => (
-            <Link key={stream.id} href={`/mentoring_list/live_list/${stream.id}`} className="group flex flex-col gap-3">
-              <div className={`relative w-full aspect-video rounded-2xl ${stream.thumbnailColor} overflow-hidden`}>
+            <Link key={stream.mentoringId} href={`/mentoring_list/live_list/${stream.mentoringId}`} className="group flex flex-col gap-3">
+              
+              {/* 💡 수정 1: 썸네일 영역에 Work_2.jpg 이미지 적용 */}
+              <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-gray-100 border border-gray-100">
+                <img 
+                  src="/images/thumbnail.jpg" 
+                  alt="멘토링 썸네일" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                />
                 <div className="absolute top-3 left-3 bg-red-600 text-white text-[11px] font-extrabold px-2 py-1 rounded-[6px] flex items-center gap-1">
                   <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" /> LIVE
                 </div>
                 <div className="absolute bottom-3 right-3 bg-black/70 text-white text-[12px] font-bold px-2.5 py-1 rounded-[8px] flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5" /> {stream.viewers}명 시청 중
+                  <Users className="w-3.5 h-3.5" /> {stream.participantCount}명 시청 중
                 </div>
               </div>
+
+              {/* 💡 수정 2: 프로필 영역에 mentor_profile 이미지 적용 */}
               <div className="flex gap-3 px-1">
-                <div className={`w-10 h-10 rounded-full shrink-0 ${stream.profileColor}`} />
+                <img 
+                  src="/images/mentor_profile.jpg" 
+                  alt="멘토 프로필" 
+                  className="w-10 h-10 rounded-full shrink-0 object-cover bg-black"
+                />
                 <div className="flex flex-col flex-1 min-w-0 pt-0.5">
                   <h3 className="text-[16px] font-bold text-[#1A1A1A] truncate">{stream.title}</h3>
-                  <p className="text-[13px] font-medium text-gray-500">{stream.mentor} · {stream.category}</p>
+                  <p className="text-[13px] font-medium text-gray-500">{stream.host.nickname} · {stream.category}</p>
                 </div>
               </div>
             </Link>
@@ -163,8 +227,6 @@ export default function LiveListPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  // 💡 [해결책 2] 고유한 Key 부여: 경로와 검색 파라미터가 바뀔 때마다 리액트가 컴포넌트를 새로 생성하게 함
-  // 뒤로가기 시 캐시된 DOM 대신 리액트가 다시 마운트되면서 이벤트 리스너를 복구합니다.
   const uniqueKey = `${pathname}-${searchParams.toString()}`;
 
   return (
