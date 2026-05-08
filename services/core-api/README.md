@@ -14,6 +14,8 @@ npm run dev -w services/core-api
 
 ## HTTP API
 
+모든 경로 앞에 `/api`를 붙여 사용합니다.
+
 ### System
 
 - `GET /health`: 서비스 상태를 확인합니다.

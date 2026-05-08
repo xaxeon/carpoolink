@@ -10,6 +10,8 @@ npm run dev -w services/question-service
 
 ## API
 
+모든 경로 앞에 `/question`을 붙여 사용합니다.
+
 `POST /api/question-detection/predict`
 
 Request body:

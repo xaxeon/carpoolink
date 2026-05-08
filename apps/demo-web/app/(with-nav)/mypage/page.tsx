@@ -40,7 +40,7 @@ export default function MyPage() {
 
     const fetchUserData = async () => {
       try {
-        const userRes = await apiClient.get("/users/me");
+        const userRes = await apiClient.get("/api/users/me");
         setUser({
           nickname: userRes.data.nickname || "사용자",
           remainingTickets: userRes.data.menteeProfile?.balance ?? 0,
@@ -60,15 +60,15 @@ export default function MyPage() {
   const handleRetakeSurvey = async () => {
     if (window.confirm("기존 설문 결과가 초기화됩니다. 다시 테스트하시겠습니까?")) {
       try {
-        // ※ 현재 백엔드에 별도의 reset API가 없다면, 
+        // ※ 현재 백엔드에 별도의 reset API가 없다면,
         // 단순히 페이지 이동 후 새로운 결과를 제출(POST)할 때 덮어씌워지게 됩니다.
-        // 만약 즉시 초기화가 필요하다면 백엔드에 PATCH /users/me (surveyResultId: null) 등을 요청해야 합니다.
-        
+        // 만약 즉시 초기화가 필요하다면 백엔드에 PATCH /api/users/me (surveyResultId: null) 등을 요청해야 합니다.
+
         // 로컬에 남아있을 수 있는 이전 결과 캐시 삭제
         localStorage.removeItem("surveyResultData");
-        
+
         // 설문 시작 페이지(혹은 안내 페이지)로 이동
-        router.push("/survey"); 
+        router.push("/survey");
       } catch (error) {
         console.error("초기화 실패:", error);
         alert("처리에 실패했습니다. 잠시 후 다시 시도해주세요.");
@@ -94,7 +94,7 @@ export default function MyPage() {
 
   return (
     <main className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans min-h-[100dvh] pb-[80px]">
-      
+
       <header className="flex items-center justify-between px-5 py-4 sticky top-0 bg-white z-20">
         <h1 className="text-[22px] font-bold tracking-tight">마이페이지</h1>
         <button className="p-1 hover:bg-gray-100 rounded-full transition-colors">
@@ -109,7 +109,7 @@ export default function MyPage() {
             <span className="text-[15px] font-extrabold mb-1">멘티</span>
             <span className="text-[10px] font-bold tracking-widest">—O—O—</span>
           </div>
-          
+
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               <h2 className="text-[20px] font-semibold tracking-tight">{user.nickname}</h2>
@@ -119,9 +119,9 @@ export default function MyPage() {
                 </span>
               )}
             </div>
-            
+
             {/* 💡 3. 다시하기 버튼 추가 (프로필 옆/아래 배치) */}
-            <button 
+            <button
               onClick={handleRetakeSurvey}
               className="flex items-center gap-1.5 text-gray-500 hover:text-[#1A1A1A] transition-colors"
             >
@@ -178,7 +178,7 @@ export default function MyPage() {
           <ChevronRight className="w-5 h-5 text-gray-300" />
         </Link>
 
-        <button 
+        <button
           onClick={handleLogout} 
           className="flex items-center justify-between py-4 group w-full text-left"
         >

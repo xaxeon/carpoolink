@@ -23,6 +23,8 @@ npm run dev -w services/chat-service
 
 ## API
 
+모든 경로 앞에 `/chat` 혹은 `/chat/socket.io`를 붙여 사용합니다.
+
 ### HTTP
 
 - `GET /health`

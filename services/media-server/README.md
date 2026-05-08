@@ -18,6 +18,8 @@ npm run dev -w services/media-server
 
 ## HTTP API
 
+모든 경로 앞에 `/media` 혹은 `/media/socket.io`를 붙여 사용합니다.
+
 ### `GET /health`
 
 서비스 상태 및 mediasoup worker 상태를 확인합니다.
