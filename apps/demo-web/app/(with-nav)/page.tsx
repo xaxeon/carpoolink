@@ -1,54 +1,72 @@
 "use client";
 
-import { useState } from "react";
-// 💡 Link 컴포넌트를 불러옵니다.
-import Link from "next/link"; 
-import { Search, ChevronDown, Star } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import { Search, ChevronDown, Star, AlertCircle } from "lucide-react";
 
-// 스크린샷 기반 목업 데이터
-const MOCK_MENTORS = [
-  {
-    id: 1,
-    isSuper: true,
-    tags: ["커리어 / 보상", "카풀링 3회"],
-    rating: null,
-    title: "IT 백엔드 개발 및 프로젝트 경험",
-    price: "20,000원 / 60분",
-    career: "백엔드 개발자 2년차",
-    location: "봉천동 · 사당동",
-    bgColor: "bg-gray-200" 
-  },
-  {
-    id: 2,
-    isSuper: true,
-    tags: ["업무 / 커리어", "카풀링 9회"],
-    rating: "5.0점",
-    title: "증권사 빅데이터 직무 / 실무와 취업 이야기",
-    price: "30,000원 / 60분",
-    career: "금융 빅데이터 10년차",
-    location: "신공덕동 · 여의도동 · 군자동",
-    bgColor: "bg-gray-300" 
-  },
-  {
-    id: 3,
-    isSuper: false,
-    tags: ["업계 / 업무"],
-    rating: null,
-    title: "개발자 취업 및 커리어 상담",
-    price: "30,000원 / 60분",
-    career: "백엔드 개발자 9년차",
-    location: "정자동 · 판교동",
-    bgColor: "bg-black" 
-  }
-];
+// 💡 apiClient 임포트 (경로는 프로젝트에 맞게 수정해주세요)
+import apiClient from "@/lib/apiClient";
 
-const CATEGORIES = ["전체", "업무", "일상", "보상", "성장", "커리어", "업계"];
+const CATEGORIES = ["전체", "업무", "일상", "보상", "성장", "커리어", "업계", "멘탈", "실전", "기타"];
+
+// 💡 DB 필드와 UI 카테고리 매핑 테이블
+const FIELD_MAP: Record<string, string> = {
+  WORK: "업무",
+  LIFE: "일상",
+  REWARD: "보상",
+  GROWTH: "성장",
+  CAREER: "커리어",
+  INDUSTRY: "업계",
+  MENTAL: "멘탈",
+  ACTUAL: "실전",
+  ETC: "기타",
+};
+
+// 💡 백엔드 응답에 맞춘 멘토 타입 정의
+interface Mentor {
+  mentorId: string | number;
+  userId: string | number;
+  nickname: string;
+  price: number;
+  fields: string[];
+  updatedAt: string;
+}
 
 export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState("전체");
+  const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 💡 API를 통해 멘토 목록 불러오기
+  useEffect(() => {
+    const fetchMentors = async () => {
+      try {
+        const res = await apiClient.get("/mentors");
+        setMentors(res.data.mentors || []);
+      } catch (error) {
+        console.error("멘토 목록 로딩 실패:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchMentors();
+  }, []);
+
+  // 💡 선택된 카테고리에 맞게 멘토 리스트 필터링
+  const filteredMentors = useMemo(() => {
+    if (activeCategory === "전체") return mentors;
+
+    return mentors.filter((mentor) => {
+      // 멘토가 가진 영문 필드들을 한글로 변환한 배열 생성
+      const koreanFields = mentor.fields.map(f => FIELD_MAP[f] || "기타");
+      // 선택된 카테고리가 변환된 배열에 포함되어 있는지 확인
+      return koreanFields.includes(activeCategory);
+    });
+  }, [mentors, activeCategory]);
 
   return (
-    <main className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans">
+    <main className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans min-h-[100dvh]">
       
       <header className="flex items-center justify-between px-5 py-4 sticky top-0 bg-white z-20">
         <button className="flex items-center gap-1 text-[20px] font-extrabold tracking-tight">
@@ -82,69 +100,65 @@ export default function HomePage() {
         </button>
       </div>
 
-      {/* 4. 멘토 리스트 */}
-      <div className="flex flex-col">
-        {MOCK_MENTORS.map((mentor) => (
-          // 💡 핵심 변경점: div 태그를 Link 태그로 바꾸고, href 속성으로 멘토의 id를 주소에 넘겨줍니다!
-          // 누를 때 살짝 회색 배경이 되도록 hover:bg-gray-50 도 추가했습니다.
-          <Link 
-            key={mentor.id} 
-            href={`/mentor/${mentor.id}`}
-            className="flex gap-4 px-5 py-6 border-b border-gray-100/60 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
-          >
-            <div className="relative shrink-0">
-              <div className={`w-[92px] h-[92px] rounded-2xl ${mentor.bgColor} flex items-center justify-center overflow-hidden`}>
-                {mentor.id === 3 && (
-                  <div className="text-[#FFCC00] font-extrabold text-sm flex flex-col items-center">
-                    <span>멘토</span>
-                    <span className="text-white text-[10px] mt-1">—O—O—</span>
+      {/* 💡 멘토 리스트 렌더링 영역 */}
+      <div className="flex flex-col pb-20">
+        {isLoading ? (
+          <div className="flex justify-center py-20">
+            <div className="w-8 h-8 border-4 border-gray-200 border-t-[#FFCC00] rounded-full animate-spin"></div>
+          </div>
+        ) : filteredMentors.length > 0 ? (
+          filteredMentors.map((mentor, index) => {
+            // UI용 가짜 데이터 (백엔드에서 제공하지 않는 데이터들)
+            const colors = ["bg-blue-100", "bg-emerald-100", "bg-orange-100", "bg-pink-100"];
+            const profileColor = colors[index % colors.length];
+            const displayTags = mentor.fields.length > 0 
+              ? mentor.fields.map(f => FIELD_MAP[f] || "기타").join(" / ") 
+              : "분야 미정";
+
+            return (
+              <Link 
+                key={mentor.mentorId} 
+                href={`/mentor/${mentor.mentorId}`}
+                className="flex gap-4 px-5 py-6 border-b border-gray-100/60 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <div className="relative shrink-0">
+                  <div className={`w-[92px] h-[92px] rounded-2xl ${profileColor} flex items-center justify-center overflow-hidden`}>
+                    <span className="text-3xl font-bold text-black/20">
+                      {mentor.nickname.charAt(0)}
+                    </span>
                   </div>
-                )}
-              </div>
-              
-              {mentor.isSuper && (
-                <div className="absolute -top-1.5 -left-1.5 bg-[#FFCC00] text-[#1A1A1A] text-[10px] font-extrabold px-1.5 py-0.5 rounded shadow-sm z-10 tracking-tight">
-                  슈퍼멘토
                 </div>
-              )}
-            </div>
 
-            <div className="flex flex-col flex-1 min-w-0 pt-0.5">
-              
-              <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                {mentor.tags.map((tag, idx) => (
-                  <span key={idx} className="bg-[#F2F4F6] text-gray-600 text-[11px] font-bold px-2 py-1 rounded-[4px]">
-                    {tag}
-                  </span>
-                ))}
-                {mentor.rating && (
-                  <span className="bg-[#FFF9E6] text-[#1A1A1A] text-[11px] font-extrabold px-2 py-1 rounded-[4px] flex items-center gap-0.5">
-                    <Star className="w-3 h-3 text-[#FFCC00] fill-current" /> {mentor.rating}
-                  </span>
-                )}
-              </div>
+                <div className="flex flex-col flex-1 min-w-0 pt-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                    <span className="bg-[#F2F4F6] text-gray-600 text-[11px] font-bold px-2 py-1 rounded-[4px]">
+                      {displayTags}
+                    </span>
+                  </div>
 
-              <h3 className="text-[16px] font-bold text-[#1A1A1A] leading-snug mb-1 truncate">
-                {mentor.title}
-              </h3>
-              <p className="text-[15px] font-extrabold text-[#1A1A1A] mb-2.5">
-                {mentor.price}
-              </p>
+                  <h3 className="text-[16px] font-bold text-[#1A1A1A] leading-snug mb-1 truncate">
+                    {mentor.nickname} 멘토와 함께하는 커피챗
+                  </h3>
+                  <p className="text-[15px] font-extrabold text-[#1A1A1A] mb-2.5">
+                    {mentor.price.toLocaleString()}원 <span className="text-sm font-medium text-gray-500">/ 60분</span>
+                  </p>
 
-              <div className="flex flex-col gap-0.5 text-[12.5px]">
-                <div className="flex gap-2">
-                  <span className="font-bold text-gray-500">직군 경력</span>
-                  <span className="text-gray-400">{mentor.career}</span>
+                  <div className="flex flex-col gap-0.5 text-[12.5px]">
+                    <div className="flex gap-2">
+                      <span className="font-bold text-gray-500">닉네임</span>
+                      <span className="text-gray-400">{mentor.nickname}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <span className="font-bold text-gray-500">가능 지역</span>
-                  <span className="text-gray-400">{mentor.location}</span>
-                </div>
-              </div>
-              
-            </div>
-          </Link>
-        ))}
+              </Link>
+            );
+          })
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <AlertCircle className="w-10 h-10 mb-4 text-gray-300" />
+            <p className="font-medium text-[15px]">해당 분야의 멘토가 없습니다.</p>
+          </div>
+        )}
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
