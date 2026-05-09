@@ -81,7 +81,7 @@ export default function HomePage() {
       <header className={`flex items-center justify-between px-5 py-4 sticky top-0 bg-white z-20 transition-all duration-300 ${isSearchOpen ? 'pb-2' : ''}`}>
         {!isSearchOpen ? (
           <>
-            <button className="flex items-center gap-1 text-[20px] font-extrabold tracking-tight">
+            <button className="flex items-center gap-1 text-[20px] font-bold tracking-tight">
               전체 지역 <ChevronDown className="w-5 h-5 mt-0.5" strokeWidth={2.5} />
             </button>
             <button 
@@ -168,7 +168,7 @@ export default function HomePage() {
                   <h3 className="text-[16px] font-bold text-[#1A1A1A] leading-snug mb-1 truncate">
                     {mentor.nickname} 멘토와 함께하는 카풀링
                   </h3>
-                  <p className="text-[15px] font-extrabold text-[#1A1A1A] mb-2.5">
+                  <p className="text-[15px] font-semibold text-[#1A1A1A] mb-2.5">
                     {mentor.price.toLocaleString()}원 <span className="text-sm font-medium text-gray-500">/ 60분</span>
                   </p>
 
