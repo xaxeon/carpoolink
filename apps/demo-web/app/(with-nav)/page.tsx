@@ -39,7 +39,7 @@ export default function HomePage() {
   useEffect(() => {
     const fetchMentors = async () => {
       try {
-        const res = await apiClient.get("/mentors");
+        const res = await apiClient.get("/api/mentors");
         setMentors(res.data.mentors || []);
       } catch (error) {
         console.error("멘토 목록 로딩 실패:", error);

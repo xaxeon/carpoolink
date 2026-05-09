@@ -49,7 +49,7 @@ export default function MentorDetailPage({ params }: { params: Promise<{ id: str
     const fetchMentorDetail = async () => {
       try {
         // 💡 4. 풀어낸 mentorId를 사용합니다.
-        const res = await apiClient.get(`/mentors/${mentorId}`);
+        const res = await apiClient.get(`/api/mentors/${mentorId}`);
         setMentor(res.data.mentor || res.data);
       } catch (err) {
         console.error("멘토 상세 정보 로딩 실패:", err);
