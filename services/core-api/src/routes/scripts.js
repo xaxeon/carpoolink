@@ -41,12 +41,18 @@ function buildParticipatedMentoringWhere(userId, type) {
     return where;
 }
 
-// 스크립트에 마스킹 플래그가 있는지 확인하는 함수
+// 스크립트 단락에 마스킹된 부분이 있는지 확인하는 함수
 function hasMaskedFlag(content) {
     if (!content || typeof content !== 'object') {
         return false;
     }
 
+    // pieces 배열 내부 검사
+    if (Array.isArray(content.pieces)) {
+        return content.pieces.some(piece => piece.isMasked === true);
+    }
+
+    // 전체 단락이 마스킹된 경우 검사
     return content.isMasked === true;
 }
 
@@ -68,8 +74,30 @@ function getVisibleContent(script, viewerUserId) {
             masked: false,
             content: {
                 isPrivate: true,
-                message: '비공개 질문입니다.',
+                text: '비공개 질문입니다.',
             },
+        };
+    }
+
+    const content = script.content;
+
+    if (content && Array.isArray(content.pieces)) {
+        const isMaskedParagraph = content.pieces.some(p => p.isMasked);
+
+        return {
+            visible: true,
+            masked: isMaskedParagraph,
+            content: {
+                pieces: content.pieces.map(piece => {
+                    if (piece.isMasked) {
+                        return {
+                            ...piece,
+                            text: '마스킹된 부분입니다.',
+                        };
+                    }
+                    return piece;
+                })
+            }
         };
     }
 
@@ -80,7 +108,7 @@ function getVisibleContent(script, viewerUserId) {
             masked: true,
             content: {
                 isMasked: true,
-                message: '마스킹된 단락입니다.',
+                text: '마스킹된 단락입니다.',
             },
         };
     }
@@ -99,7 +127,6 @@ function mapScriptParagraph(script, viewerUserId) {
     return {
         scriptId: script.scriptId,
         isPrivate: script.isPrivate,
-        isMasked: Boolean(visibility.masked),
         createdAt: script.createdAt,
         content: visibility.content,
         speaker: {
@@ -306,7 +333,7 @@ router.patch('/:mentoringId/publish', requireUser, async (req, res, next) => {
             });
         });
 
-        res.json(serialize({ message: '스크립트가 성공적으로 수정되고 발행되었습니다.' }));
+        res.json(serialize({ message: '스크립트가 발행되었습니다.' }));
     } catch (error) {
         next(error);
     }
