@@ -12,7 +12,9 @@
         "@carpoolink/database": "0.1.0",
         "cors": "^2.8.5",
         "express": "^5.2.1",
+        "form-data": "^4.0.5",
         "mediasoup": "^3.15.6",
+        "node-fetch": "^3.3.2",
         "socket.io": "^4.8.1"
     },
     "devDependencies": {

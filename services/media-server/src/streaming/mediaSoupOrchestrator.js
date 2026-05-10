@@ -28,11 +28,12 @@ const DEFAULT_TRANSPORT_OPTIONS = {
 };
 
 // 각 피어의 상태를 나타내는 객체를 생성하는 헬퍼 함수
-function createPeer(peerId, role, socket) {
+function createPeer(peerId, role, socket, userId) {
     return {
         peerId,
         role,
         socket,
+        userId,
         transports: new Map(),
         producers: new Map(),
         consumers: new Map()
@@ -49,8 +50,9 @@ function resolveBooleanOrFallback(value, fallbackValue = true) {
 
 // MediaSoup을 활용하여 멘토링 세션의 미디어 스트림을 관리하는 오케스트레이터 클래스
 export class MediaSoupOrchestrator {
-    constructor({ audioPipeline }) {
+    constructor({ audioPipeline, rtpForwarder }) {
         this.audioPipeline = audioPipeline;
+        this.rtpForwarder = rtpForwarder;
         this.worker = null;
         this.rooms = new Map();
     }
@@ -127,7 +129,7 @@ export class MediaSoupOrchestrator {
         };
     }
 
-    async addPeer({ mentoringId, peerId, role, socket, isGroup }) {
+    async addPeer({ mentoringId, peerId, role, socket, isGroup, userId }) {
         const room = await this.ensureRoom(mentoringId, { isGroup });
 
         if (room.peers.has(peerId)) {
@@ -164,7 +166,7 @@ export class MediaSoupOrchestrator {
             }
         }
 
-        const peer = createPeer(peerId, role, socket);
+        const peer = createPeer(peerId, role, socket, userId);  // userId 전달
         room.peers.set(peerId, peer);
 
         return {
@@ -276,11 +278,22 @@ export class MediaSoupOrchestrator {
             if (peer.role === 'tts-bot') {
                 this.audioPipeline.attachTtsAudioProducer(mentoringId, producer.id);
             }
+
+            const shouldForward = peer.role === 'mentor' || (!room.isGroup && peer.role === 'mentee');
+            if (shouldForward && peer.userId != null) {
+                this.rtpForwarder.start({
+                    router: room.router,
+                    producer,
+                    mentoringId,
+                    userId: peer.userId,
+                }).catch((e)=> console.error('[produce] RTP 포워딩 시작 실패', e));
+            }
         }
 
         producer.on('transportclose', () => {
             peer.producers.delete(producer.id);
             this.audioPipeline.detachAudioProducer(mentoringId, producer.id);
+            this.rtpForwarderder.stop(producer.id);
         });
 
         return {

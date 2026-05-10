@@ -6,6 +6,7 @@ import { createMentoringRepository } from './store/mentoringRepository.js';
 import { AudioPipelineManager } from './streaming/audioPipeline.js';
 import { MediaSoupOrchestrator } from './streaming/mediaSoupOrchestrator.js';
 import { createSignalingServer } from './streaming/signalingServer.js';
+import { RtpForwarder } from './streaming/rtpForwarder.js';
 
 const app = express();
 const PORT = Number(process.env.MEDIA_SERVER_PORT || 4002);
@@ -15,7 +16,8 @@ app.use(express.json());
 
 const mentoringRepository = await createMentoringRepository();
 const audioPipeline = new AudioPipelineManager();
-const mediaOrchestrator = new MediaSoupOrchestrator({ audioPipeline });
+const rtpForwarder = new RtpForwarder({sttServiceUrl: process.env.STT_SERVICE_URL || 'http://localhost:4004'});
+const mediaOrchestrator = new MediaSoupOrchestrator({ audioPipeline, rtpForwarder });
 
 await mediaOrchestrator.init();
 

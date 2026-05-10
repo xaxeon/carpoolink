@@ -20,7 +20,7 @@ multipart/form-data:
 */
 router.post("/chunk", upload.single("audio"), async (req, res) => {
   try {
-    const { userId, mentoringId, chunkIndex, startTime, endTime } = req.body;
+    const { userId, mentoringId, chunkIndex, startTime, endTime, sessionOffset } = req.body;
 
     // 필수값 체크
     if (!req.file || !userId || !mentoringId || chunkIndex === undefined) {
@@ -44,6 +44,7 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
         chunkIndex: parseInt(chunkIndex),
         startTime: startTime ? parseFloat(startTime) : undefined,
         endTime: endTime ? parseFloat(endTime) : undefined,
+        sessionOffset: sessionOffset ? parseFloat(sessionOffset) : undefined,
       },
       {
         userId,

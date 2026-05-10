@@ -12,6 +12,7 @@ export async function transcribeAudio(audioStream) {
   const transcription = await openai.audio.transcriptions.create({
     file: audioStream,
     model: "gpt-4o-transcribe",
+    language: "ko",
   });
   return transcription.text;
 }
