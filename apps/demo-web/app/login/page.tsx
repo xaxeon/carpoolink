@@ -43,6 +43,8 @@ export default function LoginPage() {
           const meResponse = await apiClient.get("/api/users/me");
           const userData = meResponse.data;
 
+          localStorage.setItem("userRole", userData.role);
+
           // 유저가 멘티(MENTEE)이면서, 설문결과(surveyResult)가 없는 경우 /survey로 튕겨냅니다.
           if (userData.role === "MENTEE" && !userData.menteeProfile?.surveyResult) {
             router.push("/survey");

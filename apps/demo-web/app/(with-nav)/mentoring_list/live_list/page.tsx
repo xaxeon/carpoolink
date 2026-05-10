@@ -54,7 +54,7 @@ function LiveListContent() {
   const [streams, setStreams] = useState<MentoringStream[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [userRole, setUserRole] = useState("MENTOR");
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [titleInput, setTitleInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -68,6 +68,9 @@ function LiveListContent() {
 
   useEffect(() => {
     setIsMounted(true);
+
+    const storedRole = localStorage.getItem("userRole");
+    if (storedRole) setUserRole(storedRole);
 
     const fetchLiveStreams = async () => {
       try {
@@ -162,7 +165,7 @@ function LiveListContent() {
   if (!isMounted) return <div className="w-full h-screen bg-white" />;
 
   return (
-    <div className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans min-h-[100dvh] relative overflow-hidden pb-[64px]">
+    <div className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans h-[100dvh] relative overflow-hidden pb-[64px]">
 
       {/* 헤더 및 리스트 영역 (기존 디자인 유지) */}
       <header className={`sticky top-0 bg-white z-20 transition-all duration-300 shrink-0 ${isSearchOpen ? 'pb-2' : ''}`}>
@@ -229,7 +232,11 @@ function LiveListContent() {
           </div>
         ) : filteredAndSortedStreams.length > 0 ? (
           filteredAndSortedStreams.map((stream) => (
-            <Link key={stream.mentoringId} href={`/mentoring_list/live_list/${stream.mentoringId}`} className="group flex flex-col gap-3">
+            <Link
+              key={stream.mentoringId}
+              href={userRole === "MENTOR" ? `/mentoring/live/mentor?id=${stream.mentoringId}` : `/mentoring/live/mentee?id=${stream.mentoringId}`}
+              className="group flex flex-col gap-3"
+            >
 
               <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-gray-100 border border-gray-100">
                 <img
