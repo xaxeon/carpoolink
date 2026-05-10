@@ -235,4 +235,81 @@ router.get('/:mentoringId', requireUser, async (req, res, next) => {
     }
 });
 
+// [PATCH] /scripts/:mentoringId/publish - 스크립트 단락 수정 및 멘토링 스크립트 발행
+router.patch('/:mentoringId/publish', requireUser, async (req, res, next) => {
+    try {
+        let mentoringId;
+        try {
+            mentoringId = BigInt(req.params.mentoringId);
+        } catch {
+            return res.status(400).json({ message: '유효하지 않은 mentoringId입니다.' });
+        }
+
+        const { scripts } = req.body;
+
+        if (!Array.isArray(scripts) || scripts.length === 0) {
+            return res.status(400).json({ message: '업데이트할 스크립트 단락 배열(scripts)이 필요합니다.' });
+        }
+
+        // 1. 멘토링 정보 및 권한 확인
+        const mentoring = await prisma.mentoring.findUnique({
+            where: { mentoringId },
+            select: {
+                userId: true,
+                status: true,
+                isScriptPublished: true
+            },
+        });
+
+        if (!mentoring) {
+            return res.status(404).json({ message: '멘토링을 찾을 수 없습니다.' });
+        }
+
+        // 주관 멘토인지 확인
+        if (mentoring.userId !== req.user.userId) {
+            return res.status(403).json({ message: '스크립트를 발행할 권한이 없습니다.' });
+        }
+
+        if (mentoring.status !== 'COMPLETED') {
+            return res.status(400).json({ message: '완료된 멘토링의 스크립트만 발행할 수 있습니다.' });
+        }
+
+        if (mentoring.isScriptPublished) {
+            return res.status(400).json({ message: '이미 발행된 스크립트입니다. 더 이상 수정하거나 발행할 수 없습니다.' });
+        }
+
+        // 2. 트랜잭션으로 단락별 내용 업데이트 및 발행 상태 변경 수행
+        await prisma.$transaction(async (tx) => {
+            // 전달받은 스크립트 단락들 업데이트
+            for (const script of scripts) {
+                let scriptId;
+                try {
+                    scriptId = BigInt(script.scriptId);
+                } catch {
+                    continue; // 유효하지 않은 scriptId는 무시
+                }
+
+                await tx.script.update({
+                    where: { scriptId },
+                    data: {
+                        content: script.content,
+                    },
+                });
+            }
+
+            // 멘토링 스크립트 발행 상태를 true로 변경
+            await tx.mentoring.update({
+                where: { mentoringId },
+                data: {
+                    isScriptPublished: true,
+                },
+            });
+        });
+
+        res.json(serialize({ message: '스크립트가 성공적으로 수정되고 발행되었습니다.' }));
+    } catch (error) {
+        next(error);
+    }
+});
+
 export default router;

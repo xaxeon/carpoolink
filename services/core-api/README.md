@@ -56,3 +56,4 @@ npm run dev -w services/core-api
 
 - `GET /scripts`: 접근 가능한 스크립트 멘토링 목록을 조회합니다. `x-user-id`와 `type`(`all`/`group`/`one-on-one`) 쿼리를 사용합니다.
 - `GET /scripts/{mentoringId}`: 특정 멘토링의 스크립트 전문을 조회합니다. `x-user-id`가 필요합니다.
+- `PATCH /scripts/{mentoringId}/publish`: 특정 멘토링의 스크립트를 수정 후 발행합니다. `x-user-id`가 필요합니다.
