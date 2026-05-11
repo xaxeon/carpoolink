@@ -19,7 +19,7 @@ jobs:
     name: Detect Changed Services
     runs-on: ubuntu-latest
     outputs:
-      changed_services: ${{ steps.changes.outputs.changes }}
+      changed_services: ${{ steps.force-all.outputs.changes ||steps.changes.outputs.changes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,7 +44,13 @@ jobs:
             stt-service:
               - 'services/stt-service/**'
               - 'packages/**'
-
+      
+      - name: Force all services if manual trigger
+        id: force-all
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo 'changes=["core-api", "chat-service", "media-server", "question-service", "stt-service"]' >> $GITHUB_OUTPUT
+  
   buildAndPush:
     name: Build and Push ${{ matrix.service }}
     needs: detectChanges
