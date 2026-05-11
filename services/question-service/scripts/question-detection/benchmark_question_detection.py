@@ -23,9 +23,9 @@ from run_hybrid_question_pipeline import (
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SERVICE_ROOT = SCRIPT_DIR.parent
-CARPOOLINK_ROOT = SERVICE_ROOT.parent.parent
-REPO_ROOT = CARPOOLINK_ROOT.parent
+SCRIPTS_ROOT = SCRIPT_DIR.parent
+SERVICE_ROOT = SCRIPTS_ROOT.parent
+REPO_ROOT = SERVICE_ROOT.parent.parent
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,13 +35,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--test-path",
         type=str,
-        default="carpoolink/data/processed/question_detection/test.csv",
+        default="data/processed/question_detection/test.csv",
         help="Path to test CSV",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="carpoolink/services/question-service/outputs/question_detection/benchmark",
+        default="services/question-service/outputs/question_detection/benchmark",
         help="Directory to save benchmark outputs",
     )
     parser.add_argument(
@@ -60,13 +60,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tfidf-artifact-dir",
         type=str,
-        default="carpoolink/services/model/question_detection/tfidf_lr_rule_filter_off",
+        default="services/model/question_detection/tfidf_lr_rule_filter_off",
         help="TF-IDF artifact directory",
     )
     parser.add_argument(
         "--kc-electra-dir",
         type=str,
-        default="carpoolink/services/model/question_detection/kc_electra_question_detector",
+        default="services/model/question_detection/kc_electra_question_detector",
         help="KC-ELECTRA artifact directory",
     )
     parser.add_argument(
@@ -119,11 +119,7 @@ def resolve_input_path(raw_path: str) -> Path:
     else:
         candidates.append(path)
         candidates.append(REPO_ROOT / path)
-        candidates.append(CARPOOLINK_ROOT / path)
-
-        raw_parts = path.parts
-        if raw_parts and raw_parts[0].lower() == "carpoolink":
-            candidates.append(CARPOOLINK_ROOT.joinpath(*raw_parts[1:]))
+        candidates.append(SERVICE_ROOT / path)
 
     for candidate in candidates:
         if candidate.exists():

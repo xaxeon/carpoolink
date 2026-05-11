@@ -6,7 +6,7 @@ from typing import Dict, List
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent.parent
 
 INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "question_detection" / "merged"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "interim" / "question_detection" / "normalized"

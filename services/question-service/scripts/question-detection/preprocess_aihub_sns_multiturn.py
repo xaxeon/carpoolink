@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 # 경로 설정
 # =========================================================
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent.parent
 
 EXTRACTED_ROOT = PROJECT_ROOT / "data" / "interim" / "question_detection" / "extracted" / "sns_multiturn"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "interim" / "question_detection" / "candidate"
