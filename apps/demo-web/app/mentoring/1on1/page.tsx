@@ -12,8 +12,8 @@ interface ChatMessage {
 }
 
 export default function PrivateMentoringPage() {
-  // 💡 역할 분기: 실제 구현 시에는 로그인 정보, 페이지 Props, 혹은 URL 쿼리 등에서 동적으로 받아오도록 수정하세요.
-  const role: "mentor" | "mentee" = "mentee";
+  const [role, setRole] = useState<string>("MENTEE");
+  const [userId, setUserId] = useState<number>(2);
 
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
@@ -23,9 +23,18 @@ export default function PrivateMentoringPage() {
   const [chatInput, setChatInput] = useState("");
   const [elapsedTime, setElapsedTime] = useState(0);
 
+  useEffect(() => {
+    const storedRole = localStorage.getItem("role")?.toUpperCase();
+
+    if (storedRole) setRole(storedRole);
+
+    const storedUserId = localStorage.getItem("userId");
+    if (storedUserId) setUserId(Number(storedUserId));
+  }, []);
+
   // 1. 소켓 및 멘토링 세션 연결
   const { sessionData, isLoading, error, isConnected, peerId, socket, endMentoring } =
-    useMentoringSession({ role });
+    useMentoringSession({ role, userId });
 
   // 2. WebRTC 1:1 오디오 세션 연결
   const { isMicOn, setMicOn, remoteStreams, isReady, error: webRtcError } =

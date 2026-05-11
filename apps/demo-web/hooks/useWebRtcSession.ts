@@ -6,7 +6,7 @@ interface WebRtcSessionConfig {
     socket: Socket | null;
     mentoringId: string;
     peerId: string;
-    role: "mentor" | "mentee";
+    role: string;
     mentoringType?: "GROUP" | "ONE_ON_ONE";
     onRemoteStream?: (stream: MediaStream) => void;
     onError?: (error: string) => void;
@@ -41,8 +41,8 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
 
     // 1. 로컬 미디어 스트림 획득
     const initLocalStream = useCallback(async () => {
-        const needsVideo = (config.role === "mentor" && config.mentoringType === "GROUP");
-        const needsAudio = config.role === "mentor" || (config.role === "mentee" && config.mentoringType === "ONE_ON_ONE");
+        const needsVideo = (config.role === "MENTOR" && config.mentoringType === "GROUP");
+        const needsAudio = config.role === "MENTOR" || (config.role === "MENTEE" && config.mentoringType === "ONE_ON_ONE");
 
         if (!needsVideo && !needsAudio) {
             setIsCameraOn(false);
@@ -448,7 +448,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
                 // 멘토링 타입에 따라 스트림 필수 여부 확인
                 // 1:N 멘티는 localStream이 null이어도 초기화를 계속 진행해야 합니다 (수신을 위해)
                 const isOneToOne = config.mentoringType === "ONE_ON_ONE";
-                const needsLocalStream = config.role === "mentor" || isOneToOne;
+                const needsLocalStream = config.role === "MENTOR" || isOneToOne;
 
                 // 스트림이 꼭 필요한 역할인데 아직 준비가 안 됐다면 대기
                 if (needsLocalStream && !localStream) {
@@ -466,7 +466,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
                 // 3. 송출(Produce) 로직
                 // localStream이 존재할 때만 실행되도록 if문으로 감싸 타입을 확정합니다.
                 if (localStream) {
-                    if (config.role === "mentor") {
+                    if (config.role === "MENTOR") {
                         // 멘토는 비디오와 오디오 모두 송출
                         await produceAudio(localStream, sendTransport);
                         await produceVideo(localStream, sendTransport);

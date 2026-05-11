@@ -15,6 +15,9 @@ interface ChatMessage {
 }
 
 export default function LiveMentoringPage() {
+    const [role, setRole] = useState<string>("MENTEE");
+    const [userId, setUserId] = useState<number>(2);
+
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
     const [isPaidMode, setIsPaidMode] = useState(false);
@@ -23,12 +26,18 @@ export default function LiveMentoringPage() {
     const [isAiOpen, setIsAiOpen] = useState(false);
     const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
 
-    // 💡 1:1인지 1:N인지 구분하는 변수 (추후 API 연동 시 sessionData 등에서 받아오도록 매핑하세요)
-    const mentoringType = "GROUP";
+    useEffect(() => {
+        const storedRole = localStorage.getItem("role")?.toUpperCase();
+
+        if (storedRole) setRole(storedRole);
+
+        const storedUserId = localStorage.getItem("userId");
+        if (storedUserId) setUserId(Number(storedUserId));
+    }, []);
 
     // Hook 적용
     const { sessionData, participantCount, isLoading, error, isConnected, peerId, socket } =
-        useMentoringSession({ role: "mentee" });
+        useMentoringSession({ role, userId });
 
     // WebRTC 세션 시작
     const { isMicOn, setMicOn, remoteStreams, isReady: webRtcReady, error: webRtcError } =
@@ -36,8 +45,8 @@ export default function LiveMentoringPage() {
             socket,
             mentoringId: sessionData?.mentoringId?.toString() || "",
             peerId: peerId || "",
-            role: "mentee",
-            mentoringType,
+            role,
+            mentoringType: "GROUP"
         });
 
     const [chats, setChats] = useState<ChatMessage[]>([

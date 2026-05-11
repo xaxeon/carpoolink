@@ -15,7 +15,7 @@ interface MentoringSessionData {
 }
 
 interface UseMentoringSessionOptions {
-    role: "mentor" | "mentee";
+    role: string;
     userId?: number;
 }
 

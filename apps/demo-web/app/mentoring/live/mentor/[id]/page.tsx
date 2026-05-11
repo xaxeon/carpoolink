@@ -16,6 +16,9 @@ interface Question {
 }
 
 export default function MentorLivePage() {
+    const [role, setRole] = useState<string>("MENTEE");
+    const [userId, setUserId] = useState<number>(2);
+
     const videoRef = useRef<HTMLVideoElement>(null);
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -26,7 +29,7 @@ export default function MentorLivePage() {
 
     // Hook 적용
     const { sessionData, participantCount, isLoading, error, isConnected, peerId, socket, endMentoring } =
-        useMentoringSession({ role: "mentor" });
+        useMentoringSession({ role, userId });
 
     // WebRTC 세션 시작
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, isReady: webRtcReady, error: webRtcError } =
@@ -73,6 +76,15 @@ export default function MentorLivePage() {
     ];
 
     const currentQuestion = questionQueue[currentIdx];
+
+    useEffect(() => {
+        const storedRole = localStorage.getItem("role")?.toUpperCase();
+
+        if (storedRole) setRole(storedRole);
+
+        const storedUserId = localStorage.getItem("userId");
+        if (storedUserId) setUserId(Number(storedUserId));
+    }, []);
 
     // 로컬 스트림을 video element에 연결
     useEffect(() => {
