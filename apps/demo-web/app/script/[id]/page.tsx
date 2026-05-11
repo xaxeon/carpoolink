@@ -1,13 +1,13 @@
 "use client";
 
-// 💡 1. params Promise를 풀기 위해 React에서 'use'를 추가로 불러옵니다.
 import { useState, useEffect, useRef, use } from "react";
-import Link from "next/link";
-import { ChevronLeft, Undo2, Save, Send, Bell, MousePointer2, Grab, Eraser, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, Undo2, Send, Bell, MousePointer2, Grab, Eraser, EyeOff, Loader2 } from "lucide-react";
 
-// 💡 2. params의 타입을 Promise로 감싸줍니다.
+import apiClient from "@/lib/apiClient";
+
 export default function ScriptEditPage({ params }: { params: Promise<{ id: string }> }) {
-  // 💡 3. use() 훅을 사용하여 비동기 params 객체에서 id 값을 안전하게 꺼냅니다.
+  const router = useRouter();
   const { id } = use(params);
 
   const [isMenteeView, setIsMenteeView] = useState(false);
@@ -17,19 +17,170 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
   const [canUndo, setCanUndo] = useState(false);
   const [clickRangeStart, setClickRangeStart] = useState<Range | null>(null);
   
+  const [mentoringInfo, setMentoringInfo] = useState<{ title: string; date: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPublishing, setIsPublishing] = useState(false);
+
   const editorRef = useRef<HTMLDivElement>(null);
 
+  // 1. 초기 데이터 로드
   useEffect(() => {
-    if (editorRef.current && !editorRef.current.innerHTML) {
-      editorRef.current.innerHTML = `During our session today, we discussed the strategic roadmap for the upcoming quarter. We focused on three main pillars: operational efficiency, stakeholder communication, and technical debt reduction.<br><br>I noticed that your approach to delegating tasks has improved significantly. However, you should still monitor the velocity of the secondary team when sharing the board with junior designers.`;
-    }
-    updateUndoState();
-  }, []);
+    const fetchScriptData = async () => {
+      setIsLoading(true);
+      try {
+        const res = await apiClient.get(`/scripts/${id}`);
+        const { mentoring, scripts } = res.data;
 
-  const updateUndoState = () => {
-    setCanUndo(document.queryCommandEnabled('undo'));
+        const d = mentoring.startedAt ? new Date(mentoring.startedAt) : null;
+        const dateStr = d 
+          ? `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
+          : "날짜 정보 없음";
+
+        setMentoringInfo({ title: mentoring.title, date: dateStr });
+
+        if (editorRef.current) {
+          const htmlContent = scripts.map((s: any) => {
+            const scriptId = s.scriptId;
+            const speakerName = s.speaker?.nickname || "알 수 없음";
+            const isMentor = s.speaker?.isHostMentor;
+            
+            const timestamp = s.content?.timestamp 
+              ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none" contenteditable="false">${s.content.timestamp}</span>` 
+              : "";
+
+            let textHTML = "";
+
+            if (s.content?.isPrivate || s.isPrivate) {
+              textHTML = s.content?.text || "비공개 질문입니다.";
+              return `<div class="mb-4 text-gray-400 italic" contenteditable="false">🔒 <b>[${speakerName}]</b>${timestamp}<br /><span class="inline-block mt-0.5">${textHTML}</span></div>`;
+            }
+
+            if (s.content?.pieces && Array.isArray(s.content.pieces)) {
+              textHTML = s.content.pieces.map((piece: any) => {
+                const escapedText = (piece.text || "").replace(/\n/g, "<br>");
+                if (piece.isMasked) {
+                  return `<span style="background-color: #FFCC00">${escapedText}</span>`;
+                }
+                return escapedText;
+              }).join('');
+            } else {
+              textHTML = (s.content?.text || s.content?.message || "").replace(/\n/g, "<br>");
+              if (s.masked || s.isMasked || s.content?.isMasked) {
+                textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
+              }
+            }
+
+            const nameColor = isMentor ? "#D97706" : "#2563EB"; 
+
+            return `<div class="mb-4 script-block" data-script-id="${scriptId}">
+              <b style="color: ${nameColor};" contenteditable="false">[${speakerName}]</b>${timestamp}<br />
+              <span class="inline-block mt-0.5 script-content">${textHTML}</span>
+            </div>`;
+          }).join('');
+          
+          editorRef.current.innerHTML = htmlContent || "<p class='text-gray-400'>내용을 찾을 수 없습니다.</p>";
+        }
+      } catch (error) {
+        console.error("데이터 로드 실패:", error);
+      } finally {
+        setIsLoading(false);
+        updateUndoState();
+      }
+    };
+
+    if (id) fetchScriptData();
+  }, [id]);
+
+  // 2. 스크립트 발행 (데이터 수집)
+  const handlePublish = async () => {
+    if (!editorRef.current || isPublishing) return;
+    setIsPublishing(true);
+
+    try {
+      const scriptBlocks = editorRef.current.querySelectorAll('.script-block');
+      
+      const payloadMap = new Map<string, { text: string; isMasked: boolean }[]>();
+
+      scriptBlocks.forEach((block) => {
+        const scriptId = block.getAttribute('data-script-id');
+        const contentNode = block.querySelector('.script-content');
+        
+        if (!scriptId || !contentNode) return;
+
+        const pieces: { text: string; isMasked: boolean }[] = [];
+        
+        const parseNode = (node: Node, isCurrentlyMasked: boolean) => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            if (node.textContent) {
+              pieces.push({ text: node.textContent, isMasked: isCurrentlyMasked });
+            }
+          } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            const tag = el.tagName.toUpperCase();
+
+            // 엔터를 막았기 때문에 BR 태그가 생길 일은 없지만, 기존 데이터 호환을 위해 남겨둠
+            if (tag === 'BR') {
+              pieces.push({ text: '\n', isMasked: isCurrentlyMasked });
+              return;
+            }
+
+            const bg = el.style.backgroundColor;
+            const isNodeMasked = bg.includes('rgb(255, 204, 0)') || bg.includes('#FFCC00') || bg.includes('#ffcc00');
+            const effectiveMask = isCurrentlyMasked || isNodeMasked;
+
+            el.childNodes.forEach(child => parseNode(child, effectiveMask));
+          }
+        };
+
+        contentNode.childNodes.forEach(child => parseNode(child, false));
+
+        if (!payloadMap.has(scriptId)) {
+          payloadMap.set(scriptId, pieces);
+        } else {
+          const existing = payloadMap.get(scriptId)!;
+          existing.push(...pieces);
+        }
+      });
+
+      const payloadScripts = Array.from(payloadMap.entries()).map(([scriptId, rawPieces]) => {
+        const mergedPieces = rawPieces.reduce((acc, current) => {
+          if (acc.length > 0 && acc[acc.length - 1].isMasked === current.isMasked) {
+            acc[acc.length - 1].text += current.text;
+          } else {
+            acc.push({ ...current });
+          }
+          return acc;
+        }, [] as { text: string; isMasked: boolean }[]);
+
+        return {
+          scriptId: scriptId,
+          content: { pieces: mergedPieces }
+        };
+      });
+
+      await apiClient.patch(`/scripts/${id}/publish`, { scripts: payloadScripts });
+      
+      alert("성공적으로 발행되었습니다!");
+      setIsPublishPopupOpen(false);
+      router.push('/mypage/scripts'); 
+      
+    } catch (error: any) {
+      console.error("스크립트 발행 실패:", error);
+      alert(error.response?.data?.message || "발행에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
+  // 3. 💡 에디터 키보드 제어 (Enter 줄바꿈 완전 차단)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault(); // Enter 키의 기본 동작(줄바꿈, 블록 분리)을 완벽히 무시합니다.
+      return; // 아무 작업도 수행하지 않고 종료
+    }
+  };
+
+  const updateUndoState = () => setCanUndo(document.queryCommandEnabled('undo'));
   const applyMask = (color: string) => {
     if (editorRef.current) editorRef.current.focus();
     if (!document.execCommand('hiliteColor', false, color)) {
@@ -38,12 +189,10 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
     updateUndoState();
     setClickRangeStart(null);
   };
-
   const handleAction = (action: 'mask' | 'erase') => {
     if (action === 'mask') applyMask('#FFCC00');
     else if (action === 'erase') applyMask('transparent');
   };
-
   const handleUndo = () => {
     document.execCommand('undo');
     updateUndoState();
@@ -55,10 +204,8 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
     if (editMode !== 'click' || isMenteeView) return;
 
     const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-
-    if (!sel.isCollapsed) {
-      setClickRangeStart(null);
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) {
+      if (sel && !sel.isCollapsed) setClickRangeStart(null);
       return;
     }
 
@@ -84,9 +231,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  useEffect(() => {
-    setClickRangeStart(null);
-  }, [editMode]);
+  useEffect(() => { setClickRangeStart(null); }, [editMode]);
 
   return (
     <main className="flex flex-col w-full h-[100dvh] bg-white text-[#1A1A1A] font-sans overflow-hidden relative">
@@ -106,10 +251,9 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
       <header className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0 bg-white z-10">
         <div className="flex items-center gap-3">
-          {/* 뒤로 가기 버튼: 브라우저 환경을 고려해 단순 링크에서 router.back() 등을 사용할 수도 있습니다. */}
-          <Link href="/mypage/scripts" className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
+          <button onClick={() => router.back()} className="p-1 -ml-1 hover:bg-gray-100 rounded-full transition-colors">
             <ChevronLeft className="w-6 h-6 text-[#1A1A1A]" strokeWidth={2.5} />
-          </Link>
+          </button>
           <h1 className="text-[17px] font-extrabold tracking-tight">스크립트 편집 & 리뷰</h1>
         </div>
         
@@ -134,26 +278,13 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
         </div>
         
         <div className="flex items-center gap-2">
-          <button 
-            onMouseDown={(e) => e.preventDefault()} 
-            onClick={() => handleAction('mask')} 
-            className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" 
-            title="선택된 영역 마스킹"
-          >
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('mask')} className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹">
             <EyeOff className="w-4 h-4" />
           </button>
-
-          <button 
-            onMouseDown={(e) => e.preventDefault()} 
-            onClick={() => handleAction('erase')} 
-            className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" 
-            title="선택된 영역 마스킹 해제"
-          >
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('erase')} className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹 해제">
             <Eraser className="w-4 h-4" />
           </button>
-
           <div className="h-4 w-[1px] bg-gray-300 mx-1" />
-          
           <button onMouseDown={(e) => e.preventDefault()} onClick={handleUndo} disabled={!canUndo} className={`p-2 rounded-lg transition-colors ${canUndo ? 'text-gray-700 hover:bg-gray-200' : 'text-gray-300 cursor-not-allowed'}`} title="실행 취소">
             <Undo2 className="w-4 h-4" />
           </button>
@@ -161,33 +292,45 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-8 bg-white custom-scrollbar">
-        {/* 💡 4. 위에서 use()로 꺼낸 id를 직접 사용합니다. */}
-        <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase">Script ID: {id}</p>
-        
-        <h2 className="text-3xl font-extrabold text-[#1A1A1A] leading-tight mb-8">
-          Mentoring Summary - Mar 25, 2026
-        </h2>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-8 h-8 text-[#FFCC00] animate-spin" />
+            <p className="text-[14px] text-gray-400">데이터를 불러오는 중입니다...</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase">Mentoring ID: {id}</p>
+            <h2 className="text-[26px] font-extrabold text-[#1A1A1A] leading-tight mb-8">
+              {mentoringInfo?.title}
+              <span className="block text-[15px] font-medium text-gray-400 mt-2 tracking-normal">{mentoringInfo?.date}</span>
+            </h2>
 
-        <div 
-          ref={editorRef}
-          contentEditable={!isMenteeView}
-          suppressContentEditableWarning
-          onClick={handleEditorClick}
-          onInput={updateUndoState}
-          onKeyUp={updateUndoState}
-          className={`editor-container text-[16px] leading-[1.9] text-gray-700 whitespace-pre-wrap tracking-tight transition-all p-4 -mx-4 rounded-xl
-            ${isMenteeView ? 'mentee-view bg-[#FAFAFA] border border-gray-100 pointer-events-none' : 'focus:ring-2 focus:ring-[#FFCC00]/30 cursor-text'}
-          `}
-        />
+            <div 
+              ref={editorRef}
+              contentEditable={!isMenteeView}
+              suppressContentEditableWarning
+              onClick={handleEditorClick}
+              onInput={updateUndoState}
+              onKeyDown={handleKeyDown} // 💡 핵심: 여기서 Enter 동작을 완벽히 차단합니다.
+              onKeyUp={updateUndoState}
+              className={`editor-container text-[16px] leading-[1.9] text-gray-700 whitespace-pre-wrap tracking-tight transition-all p-4 -mx-4 rounded-xl
+                ${isMenteeView ? 'mentee-view bg-[#FAFAFA] border border-gray-100 pointer-events-none' : 'focus:ring-2 focus:ring-[#FFCC00]/30 cursor-text'}
+              `}
+            />
+          </>
+        )}
       </div>
 
-      <div className="w-full px-5 py-4 bg-white border-t border-gray-100 flex gap-3 shrink-0 pb-safe z-20">
-        <button className="flex flex-col items-center justify-center w-20 bg-white text-gray-600 hover:bg-gray-50 rounded-2xl border border-gray-200 active:scale-95 transition-transform">
-          <Save className="w-5 h-5 mb-1" />
-          <span className="text-[11px] font-bold">임시 저장</span>
-        </button>
-        <button onClick={() => setIsPublishPopupOpen(true)} className="flex-1 bg-[#FFCC00] text-[#1A1A1A] font-extrabold text-[16px] py-4 rounded-2xl hover:bg-[#E6B800] transition-colors flex items-center justify-center gap-2 active:scale-[0.98] shadow-sm">
-          <Send className="w-5 h-5" /> 발행하기
+      <div className="w-full px-5 py-4 bg-white border-t border-gray-100 flex shrink-0 pb-safe z-20">
+        <button 
+          onClick={() => setIsPublishPopupOpen(true)} 
+          disabled={isPublishing}
+          className={`flex-1 bg-[#FFCC00] text-[#1A1A1A] font-extrabold text-[16px] py-4 rounded-2xl transition-colors flex items-center justify-center gap-2 shadow-sm
+            ${isPublishing ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[#E6B800] active:scale-[0.98]'}
+          `}
+        >
+          {isPublishing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          {isPublishing ? '발행 중...' : '발행하기'}
         </button>
       </div>
 
@@ -199,12 +342,23 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
             </div>
             <h3 className="text-[19px] font-extrabold text-center mb-3">정말 발행하시겠습니까?</h3>
             <p className="text-gray-500 text-[13px] text-center mb-8 leading-relaxed">
-              발행 시 멘티에게 알림이 전송됩니다.<br />
-              마스킹 처리가 완벽한지 다시 한 번 확인해 주세요.
+              발행 시 멘티에게 알림이 전송되며<br />더 이상 스크립트를 <b>수정할 수 없습니다.</b>
             </p>
             <div className="flex gap-3 w-full">
-              <button onClick={() => setIsPublishPopupOpen(false)} className="flex-1 bg-[#F2F4F6] text-gray-600 font-bold py-3.5 rounded-xl transition-all hover:bg-gray-200 active:scale-95">취소</button>
-              <button className="flex-1 bg-[#FFCC00] text-[#1A1A1A] font-bold py-3.5 rounded-xl shadow-sm transition-all hover:bg-[#E6B800] active:scale-95">발행</button>
+              <button 
+                disabled={isPublishing}
+                onClick={() => setIsPublishPopupOpen(false)} 
+                className="flex-1 bg-[#F2F4F6] text-gray-600 font-bold py-3.5 rounded-xl transition-all hover:bg-gray-200 active:scale-95"
+              >
+                취소
+              </button>
+              <button 
+                disabled={isPublishing}
+                onClick={handlePublish}
+                className="flex-1 bg-[#FFCC00] text-[#1A1A1A] font-bold py-3.5 rounded-xl shadow-sm transition-all hover:bg-[#E6B800] active:scale-95 flex justify-center items-center"
+              >
+                {isPublishing ? <Loader2 className="w-5 h-5 animate-spin" /> : "발행"}
+              </button>
             </div>
           </div>
         </div>
