@@ -177,6 +177,7 @@ router.get('/', requireUser, async (req, res, next) => {
                     startedAt: mentoring.startedAt,
                     endedAt: mentoring.endedAt ?? null,
                     isGroup: mentoring.isGroup,
+                    isScriptPublished: mentoring.isScriptPublished,
                     host: {
                         userId: mentoring.hostMentor.userId,
                         nickname: mentoring.hostMentor.nickname,
