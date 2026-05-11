@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, ArrowRight } from "lucide-react";
+// 💡 실제 통신을 위해 apiClient를 불러옵니다.
+import apiClient from "@/lib/apiClient";
 
 export default function LoginPage() {
   const [userId, setUserId] = useState("");
@@ -10,7 +12,8 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
-  const handleLogin = (e: React.FormEvent) => {
+  // 💡 async 함수로 변경하여 API 통신을 기다릴 수 있게 합니다.
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
@@ -21,35 +24,62 @@ export default function LoginPage() {
 
     setIsLoading(true);
 
-    // 💡 [Mock Data] 백엔드 API 연동 전 테스트를 위한 가상 분기 처리 로직
-    setTimeout(() => {
-      // 1. 사전설문 데이터가 없는 멘티인 경우 -> 사전설문 페이지로 이동
-      if (userId === "mentee_new") {
-        router.push("/survey");
-      } 
-      // 2. 그 외 (멘토이거나 사전설문 데이터가 있는 멘티) -> 홈(멘토 목록) 화면으로 이동
-      else if (userId === "mentor1" || userId === "mentee_old") {
-        router.push("/");
-      } 
-      // 3. 등록되지 않은 테스트 아이디
-      else {
-        setErrorMsg("존재하지 않는 아이디입니다. (테스트: mentee_new, mentee_old, mentor1)");
-        setIsLoading(false);
+    try {
+      // 💡 1. [임시 우회 적용] POST /login 대신 GET /users/exists 엔드포인트를 찌릅니다.
+      const response = await apiClient.get("/api/users/exists", {
+        headers: {
+          "x-user-id": userId,
+        },
+      });
+
+      // DB에 해당 유저가 존재하는 경우 (exists === true)
+      if (response.data.exists) {
+        // 로컬 스토리지에 백엔드에서 확인된 실제 userId를 저장
+        localStorage.setItem("userId", response.data.user.userId.toString());
+
+        // 💡 2. 설문조사 여부 확인 로직 추가
+        try {
+          // 방금 로컬 스토리지에 저장한 userId를 기반으로 내 상세 정보(/api/users/me)를 불러옵니다.
+          const meResponse = await apiClient.get("/api/users/me");
+          const userData = meResponse.data;
+
+          // 유저가 멘티(MENTEE)이면서, 설문결과(surveyResult)가 없는 경우 /survey로 튕겨냅니다.
+          if (userData.role === "MENTEE" && !userData.menteeProfile?.surveyResult) {
+            router.push("/survey");
+          } else {
+            // 멘토이거나 이미 설문을 완료한 멘티인 경우 홈으로 이동
+            router.push("/");
+          }
+        } catch (meError) {
+          console.error("유저 상세 정보 호출 실패:", meError);
+          // 만약 상세 정보 호출에 실패하더라도 일단 로그인은 된 상태이므로 홈으로 보냅니다.
+          router.push("/");
+        }
+
+      } else {
+        // DB에 유저가 없는 경우 (exists === false)
+        setErrorMsg("존재하지 않는 아이디입니다.");
       }
-    }, 600); // 실제 API 통신처럼 살짝 딜레이를 줍니다.
+
+    } catch (error: any) {
+      console.error("로그인 실패:", error);
+      setErrorMsg("서버 통신 중 오류가 발생했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <main className="flex flex-col items-center justify-center w-full h-[100dvh] bg-[#F8F9FA] px-6 font-sans">
-      
+
       {/* 💡 화면 중앙 로그인 컨테이너 */}
       <div className="w-full max-w-[340px] bg-white p-8 rounded-[32px] shadow-[0_20px_60px_rgba(0,0,0,0.05)] flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-        
+
         {/* 서비스 로고/브랜딩 영역 */}
         <div className="w-16 h-16 bg-[#FFCC00] rounded-2xl flex items-center justify-center mb-6 shadow-inner">
           <img src="/icons/User.svg" alt="사용자 아이콘" className="w-9 h-9 text-[#1A1A1A]" />
         </div>
-        
+
         <h1 className="text-[27px] font-extrabold text-[#1A1A1A] tracking-tight text-center mb-2">
           카풀링 방문을 환영합니다
         </h1>
@@ -95,19 +125,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-      </div>
-
-      {/* 테스트용 안내 뱃지 (나중에 백엔드 붙일 때 삭제하시면 됩니다) */}
-      <div className="mt-8 flex gap-2">
-        <button onClick={() => setUserId('mentee_new')} className="text-[11px] font-bold bg-white border border-gray-200 text-gray-500 px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors">
-          테스트: 신규 멘티
-        </button>
-        <button onClick={() => setUserId('mentee_old')} className="text-[11px] font-bold bg-white border border-gray-200 text-gray-500 px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors">
-          테스트: 기존 멘티
-        </button>
-        <button onClick={() => setUserId('mentor1')} className="text-[11px] font-bold bg-white border border-gray-200 text-gray-500 px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors">
-          테스트: 멘토
-        </button>
       </div>
 
     </main>

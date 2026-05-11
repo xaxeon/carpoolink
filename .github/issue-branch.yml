@@ -10,7 +10,7 @@ experimental:
 branches:
   - label: release
     name: main
-    skipBranch: true
+    prefix: release/
   - label: fix
     name: main
     prefix: fix/

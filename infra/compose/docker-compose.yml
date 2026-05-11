@@ -1,27 +1,136 @@
-name: capstone-ap
+version: '3.8'
 
 services:
+  # 데이터베이스
   postgres:
     image: postgres:16-alpine
     container_name: carpoolink-postgres
-    restart: unless-stopped
-    env_file:
-      - ../../.env
-    ports:
-      - "${DB_PORT-5432}:5432"
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME:-carpoolink}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_NAME:-carpoolink}
+      TZ: Asia/Seoul
+    ports:
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-root} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-carpoolink}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - carpoolink-network
+
+  # Core API (Port 4000)
+  core-api:
+    build:
+      context: ./services/core-api
+      dockerfile: Dockerfile
+    container_name: carpoolink-core-api
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+      DATABASE_URL: postgresql://${DB_USERNAME:-carpoolink}:${DB_PASSWORD:-password}@postgres:5432/${DB_NAME:-carpoolink}
+      TZ: Asia/Seoul
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../../services/core-api:/app
+      - /app/node_modules
+    networks:
+      - carpoolink-network
+    command: npm run dev
+
+  # Chat Service (Port 4001)
+  chat-service:
+    build:
+      context: ./services/chat-service
+      dockerfile: Dockerfile
+    container_name: carpoolink-chat-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      CHAT_SERVICE_PORT: 4001
+      DATABASE_URL: postgresql://${DB_USERNAME:-carpoolink}:${DB_PASSWORD:-password}@postgres:5432/${DB_NAME:-carpoolink}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      TZ: Asia/Seoul
+    ports:
+      - "4001:4001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../../services/chat-service:/app
+      - /app/node_modules
+    networks:
+      - carpoolink-network
+    command: npm run dev
+
+  # Media Server (Port 4002)
+  media-server:
+    build:
+      context: ./services/media-server
+      dockerfile: Dockerfile
+    container_name: carpoolink-media-server
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      MEDIA_SERVER_PORT: 4002
+      DATABASE_URL: postgresql://${DB_USERNAME:-carpoolink}:${DB_PASSWORD:-password}@postgres:5432/${DB_NAME:-carpoolink}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      TZ: Asia/Seoul
+    ports:
+      - "4002:4002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../../services/media-server:/app
+      - /app/node_modules
+    networks:
+      - carpoolink-network
+    command: npm run dev
+
+  # Question Service (Port 4003)
+  question-service:
+    build:
+      context: ./services/question-service
+      dockerfile: Dockerfile
+    container_name: carpoolink-question-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      QUESTION_SERVICE_PORT: 4003
+      TZ: Asia/Seoul
+    ports:
+      - "4003:4003"
+    volumes:
+      - ../../services/question-service:/app
+      - /app/node_modules
+    networks:
+      - carpoolink-network
+    command: npm run dev
+
+  # STT Service (Port 4004)
+  stt-service:
+    build:
+      context: ./services/stt-service
+      dockerfile: Dockerfile
+    container_name: carpoolink-stt-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      STT_SERVICE_PORT: 4004
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      TZ: Asia/Seoul
+    ports:
+      - "4004:4004"
+    volumes:
+      - ../../services/stt-service:/app
+      - /app/node_modules
+    networks:
+      - carpoolink-network
+    command: npm run dev
 
 networks:
   carpoolink-network:

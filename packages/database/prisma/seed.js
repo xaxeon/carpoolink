@@ -146,14 +146,31 @@ async function main() {
     });
 
     // 테스트용 멘토링 세션 (호스트는 멘토)
-    const mentoring = await prisma.mentoring.create({
-        data: {
-            title: "테스트 멘토링",
-            isGroup: false,
-            status: "READY",
-            userId: mentor.userId,
-        },
+    const existingMentoring = await prisma.mentoring.findFirst({
+        where: { title: "테스트 멘토링" },
     });
+
+    if (existingMentoring) {
+        await prisma.mentoring.update({
+            where: { mentoringId: existingMentoring.mentoringId },
+            data: {
+                isGroup: false,
+                status: "READY",
+                isScriptPublished: true,
+                userId: mentor.userId,
+            },
+        });
+    } else {
+        await prisma.mentoring.create({
+            data: {
+                title: "테스트 멘토링",
+                isGroup: false,
+                status: "READY",
+                isScriptPublished: true,
+                userId: mentor.userId,
+            },
+        });
+    }
 }
 
 main()

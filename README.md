@@ -29,26 +29,49 @@ tests/
 	load/
 ```
 
-## 실행
+## 빠른 시작
 
-1. 루트에서 의존성 설치
+### 1. 환경 설정
 
-    ```bash
-    npm install
-    ```
+```bash
+# 프로젝트 루트에서
+npm install
+cp .env.example .env
+```
 
-2. 기본 백엔드(mentoring-session) 실행
+### 2. Docker Compose로 모든 서비스 실행
 
-    ```bash
-    npm run dev
-    ```
+```bash
+cd infra/compose
+docker-compose up -d
 
-3. 개별 서비스 실행 예시
+# 상태 확인
+docker-compose ps
+```
 
-    루트에 위치한 `package.json` scripts 목록 참고
+### 3. 웹 애플리케이션 실행
 
-    ```bash
-    npm run dev:sfu
-    npm run dev:live-chat
-    npm run dev:question-queue
-    ```
+```bash
+cd apps/demo-web
+npm run dev
+```
+
+### 4. 개별 서비스 개발
+
+```bash
+# Core API
+cd services/core-api && npm run dev
+
+# Chat Service
+cd services/chat-service && npm run dev
+
+# 다른 서비스도 동일하게
+```
+
+## 배포
+
+자동 배포는 main 브랜치로 push 시 GitHub Actions를 통해 자동 실행됩니다.
+
+- **배포 가이드**: [infra/compose/DEPLOYMENT_GUIDE.md](./infra/compose/DEPLOYMENT_GUIDE.md)
+- **시크릿 설정**: [.github/SECRETS_SETUP.md](./.github/SECRETS_SETUP.md)
+- **로컬 개발**: [infra/compose/README.md](./infra/compose/README.md)

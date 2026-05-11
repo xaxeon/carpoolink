@@ -28,21 +28,31 @@ const DEFAULT_TRANSPORT_OPTIONS = {
 };
 
 // 각 피어의 상태를 나타내는 객체를 생성하는 헬퍼 함수
-function createPeer(peerId, role, socket) {
+function createPeer(peerId, role, socket, userId) {
     return {
         peerId,
         role,
         socket,
+        userId,
         transports: new Map(),
         producers: new Map(),
         consumers: new Map()
     };
 }
 
+function resolveBooleanOrFallback(value, fallbackValue = true) {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    return Boolean(fallbackValue);
+}
+
 // MediaSoup을 활용하여 멘토링 세션의 미디어 스트림을 관리하는 오케스트레이터 클래스
 export class MediaSoupOrchestrator {
-    constructor({ audioPipeline }) {
+    constructor({ audioPipeline, rtpForwarder }) {
         this.audioPipeline = audioPipeline;
+        this.rtpForwarder = rtpForwarder;
         this.worker = null;
         this.rooms = new Map();
     }
@@ -69,16 +79,24 @@ export class MediaSoupOrchestrator {
     }
 
     // mentoringId에 해당하는 방이 존재하지 않으면 새로 생성하고, 이미 존재하면 해당 방을 반환하는 메서드
-    async ensureRoom(mentoringId) {
+    async ensureRoom(mentoringId, options = {}) {
         const key = Number(mentoringId);
+        const requestedIsGroup = resolveBooleanOrFallback(options.isGroup, true);
 
         if (this.rooms.has(key)) {
-            return this.rooms.get(key);
+            const existingRoom = this.rooms.get(key);
+
+            if (typeof options.isGroup === 'boolean' && existingRoom.isGroup !== requestedIsGroup) {
+                throw new Error('이미 생성된 룸의 isGroup 설정과 요청 값이 일치하지 않습니다.');
+            }
+
+            return existingRoom;
         }
 
         const router = await this.worker.createRouter({ mediaCodecs: DEFAULT_MEDIA_CODECS });
         const room = {
             mentoringId: key,
+            isGroup: requestedIsGroup,
             router,
             peers: new Map()
         };
@@ -99,6 +117,7 @@ export class MediaSoupOrchestrator {
 
         return {
             mentoringId: room.mentoringId,
+            isGroup: room.isGroup,
             peers: [...room.peers.values()].map((peer) => ({
                 peerId: peer.peerId,
                 role: peer.role,
@@ -110,8 +129,8 @@ export class MediaSoupOrchestrator {
         };
     }
 
-    async addPeer({ mentoringId, peerId, role, socket }) {
-        const room = await this.ensureRoom(mentoringId);
+    async addPeer({ mentoringId, peerId, role, socket, isGroup, userId }) {
+        const room = await this.ensureRoom(mentoringId, { isGroup });
 
         if (room.peers.has(peerId)) {
             throw new Error(`Peer ${peerId}은 이미 방에 존재합니다.`);
@@ -125,7 +144,29 @@ export class MediaSoupOrchestrator {
             }
         }
 
-        const peer = createPeer(peerId, role, socket);
+        if (!room.isGroup) {
+            if (role !== 'mentor' && role !== 'mentee' && role !== 'tts-bot') {
+                throw new Error('1:1 멘토링에서는 mentor/mentee/tts-bot role만 사용할 수 있습니다.');
+            }
+
+            if (role === 'mentee') {
+                const menteeExists = [...room.peers.values()].some((peer) => peer.role === 'mentee');
+
+                if (menteeExists) {
+                    throw new Error('1:1 멘토링에는 멘티 1명만 참여할 수 있습니다.');
+                }
+            }
+
+            if (role === 'tts-bot') {
+                const ttsExists = [...room.peers.values()].some((peer) => peer.role === 'tts-bot');
+
+                if (ttsExists) {
+                    throw new Error('1:1 멘토링에는 tts-bot 1개만 연결할 수 있습니다.');
+                }
+            }
+        }
+
+        const peer = createPeer(peerId, role, socket, userId);  // userId 전달
         room.peers.set(peerId, peer);
 
         return {
@@ -208,8 +249,12 @@ export class MediaSoupOrchestrator {
             throw new Error('멘토링 Room이나 Peer를 찾을 수 없습니다.');
         }
 
-        if (peer.role === 'mentee') {
+        if (peer.role === 'mentee' && room.isGroup) {
             throw new Error('멘티는 1:N 멘토링에서 미디어를 송출할 수 없습니다.');
+        }
+
+        if (!room.isGroup && kind !== 'audio') {
+            throw new Error('1:1 멘토링은 오디오만 송출할 수 있습니다.');
         }
 
         if (peer.role === 'tts-bot' && kind !== 'audio') {
@@ -226,14 +271,29 @@ export class MediaSoupOrchestrator {
                 this.audioPipeline.attachMentorAudioProducer(mentoringId, producer.id);
             }
 
+            if (peer.role === 'mentee') {
+                this.audioPipeline.attachMenteeAudioProducer(mentoringId, producer.id);
+            }
+
             if (peer.role === 'tts-bot') {
                 this.audioPipeline.attachTtsAudioProducer(mentoringId, producer.id);
+            }
+
+            const shouldForward = peer.role === 'mentor' || (!room.isGroup && peer.role === 'mentee');
+            if (shouldForward && peer.userId != null) {
+                this.rtpForwarder.start({
+                    router: room.router,
+                    producer,
+                    mentoringId,
+                    userId: peer.userId,
+                }).catch((e)=> console.error('[produce] RTP 포워딩 시작 실패', e));
             }
         }
 
         producer.on('transportclose', () => {
             peer.producers.delete(producer.id);
             this.audioPipeline.detachAudioProducer(mentoringId, producer.id);
+            this.rtpForwarderder.stop(producer.id);
         });
 
         return {

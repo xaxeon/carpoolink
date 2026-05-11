@@ -19,6 +19,7 @@ function parseType(type) {
 // 클라이언트가 참여한 멘토링 중 스크립트가 존재하는 멘토링을 찾는 함수
 function buildParticipatedMentoringWhere(userId, type) {
     const where = {
+        status: 'COMPLETED',
         OR: [
             { userId },
             {
@@ -40,12 +41,18 @@ function buildParticipatedMentoringWhere(userId, type) {
     return where;
 }
 
-// 스크립트에 마스킹 플래그가 있는지 확인하는 함수
+// 스크립트 단락에 마스킹된 부분이 있는지 확인하는 함수
 function hasMaskedFlag(content) {
     if (!content || typeof content !== 'object') {
         return false;
     }
 
+    // pieces 배열 내부 검사
+    if (Array.isArray(content.pieces)) {
+        return content.pieces.some(piece => piece.isMasked === true);
+    }
+
+    // 전체 단락이 마스킹된 경우 검사
     return content.isMasked === true;
 }
 
@@ -67,8 +74,30 @@ function getVisibleContent(script, viewerUserId) {
             masked: false,
             content: {
                 isPrivate: true,
-                message: '비공개 질문입니다.',
+                text: '비공개 질문입니다.',
             },
+        };
+    }
+
+    const content = script.content;
+
+    if (content && Array.isArray(content.pieces)) {
+        const isMaskedParagraph = content.pieces.some(p => p.isMasked);
+
+        return {
+            visible: true,
+            masked: isMaskedParagraph,
+            content: {
+                pieces: content.pieces.map(piece => {
+                    if (piece.isMasked) {
+                        return {
+                            ...piece,
+                            text: '마스킹된 부분입니다.',
+                        };
+                    }
+                    return piece;
+                })
+            }
         };
     }
 
@@ -79,7 +108,7 @@ function getVisibleContent(script, viewerUserId) {
             masked: true,
             content: {
                 isMasked: true,
-                message: '마스킹된 단락입니다.',
+                text: '마스킹된 단락입니다.',
             },
         };
     }
@@ -98,7 +127,6 @@ function mapScriptParagraph(script, viewerUserId) {
     return {
         scriptId: script.scriptId,
         isPrivate: script.isPrivate,
-        isMasked: Boolean(visibility.masked),
         createdAt: script.createdAt,
         content: visibility.content,
         speaker: {
@@ -176,6 +204,8 @@ router.get('/:mentoringId', requireUser, async (req, res, next) => {
         // 멘토링과 스크립트 조회 (접근 권한 및 스크립트 존재 여부 검증 포함)
         const mentoring = await prisma.mentoring.findFirst({
             where: {
+                status: 'COMPLETED',
+                isScriptPublished: req.user.role === 'MENTOR' ? undefined : true, // 멘토는 발행 여부 상관없이 조회 가능, 멘티는 발행된 스크립트인 경우만 조회 가능
                 mentoringId,
                 ...buildParticipatedMentoringWhere(req.user.userId),
                 scripts: {
@@ -227,6 +257,83 @@ router.get('/:mentoringId', requireUser, async (req, res, next) => {
                 scripts,
             })
         );
+    } catch (error) {
+        next(error);
+    }
+});
+
+// [PATCH] /scripts/:mentoringId/publish - 스크립트 단락 수정 및 멘토링 스크립트 발행
+router.patch('/:mentoringId/publish', requireUser, async (req, res, next) => {
+    try {
+        let mentoringId;
+        try {
+            mentoringId = BigInt(req.params.mentoringId);
+        } catch {
+            return res.status(400).json({ message: '유효하지 않은 mentoringId입니다.' });
+        }
+
+        const { scripts } = req.body;
+
+        if (!Array.isArray(scripts) || scripts.length === 0) {
+            return res.status(400).json({ message: '업데이트할 스크립트 단락 배열(scripts)이 필요합니다.' });
+        }
+
+        // 1. 멘토링 정보 및 권한 확인
+        const mentoring = await prisma.mentoring.findUnique({
+            where: { mentoringId },
+            select: {
+                userId: true,
+                status: true,
+                isScriptPublished: true
+            },
+        });
+
+        if (!mentoring) {
+            return res.status(404).json({ message: '멘토링을 찾을 수 없습니다.' });
+        }
+
+        // 주관 멘토인지 확인
+        if (mentoring.userId !== req.user.userId) {
+            return res.status(403).json({ message: '스크립트를 발행할 권한이 없습니다.' });
+        }
+
+        if (mentoring.status !== 'COMPLETED') {
+            return res.status(400).json({ message: '완료된 멘토링의 스크립트만 발행할 수 있습니다.' });
+        }
+
+        if (mentoring.isScriptPublished) {
+            return res.status(400).json({ message: '이미 발행된 스크립트입니다. 더 이상 수정하거나 발행할 수 없습니다.' });
+        }
+
+        // 2. 트랜잭션으로 단락별 내용 업데이트 및 발행 상태 변경 수행
+        await prisma.$transaction(async (tx) => {
+            // 전달받은 스크립트 단락들 업데이트
+            for (const script of scripts) {
+                let scriptId;
+                try {
+                    scriptId = BigInt(script.scriptId);
+                } catch {
+                    continue; // 유효하지 않은 scriptId는 무시
+                }
+
+                await tx.script.update({
+                    where: { scriptId },
+                    data: {
+                        content: script.content,
+                    },
+                });
+            }
+
+            // 멘토링 스크립트 발행 상태를 true로 변경
+            await tx.mentoring.update({
+                where: { mentoringId },
+                data: {
+                    isScriptPublished: true,
+                },
+            });
+        });
+
+        res.json(serialize({ message: '스크립트가 발행되었습니다.' }));
     } catch (error) {
         next(error);
     }

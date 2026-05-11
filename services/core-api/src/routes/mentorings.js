@@ -25,7 +25,13 @@ router.get('/group', async (req, res, next) => {
                 status: status,
             },
             include: {
-                hostMentor: true,
+                hostMentor: {
+                    include: {
+                        mentorProfile: {
+                            include: { fields: true },
+                        }
+                    }
+                },
                 _count: {
                     select: { participants: true },
                 }
@@ -45,6 +51,9 @@ router.get('/group', async (req, res, next) => {
                     host: {
                         userId: mentoring.hostMentor.userId,
                         nickname: mentoring.hostMentor.nickname,
+                        fields: mentoring.hostMentor.mentorProfile?.fields
+                            ? mentoring.hostMentor.mentorProfile.fields.map(f => f.fieldName)
+                            : [],
                     },
                     participantCount: mentoring._count.participants + 1,
                 })),
@@ -73,7 +82,10 @@ router.get('/one-on-one', requireUser, async (req, res, next) => {
                 hostMentor: {
                     include: {
                         mentorProfile: {
-                            select: { mentorId: true },
+                            select: {
+                                mentorId: true,
+                                fields: true,
+                            },
                         },
                     },
                 },
@@ -95,6 +107,9 @@ router.get('/one-on-one', requireUser, async (req, res, next) => {
                     userId: peerInfo.userId,
                     nickname: peerInfo.nickname,
                     mentorId: isHost ? null : mentoring.hostMentor.mentorProfile?.mentorId ?? null,
+                    fields: mentoring.hostMentor.mentorProfile?.fields
+                        ? mentoring.hostMentor.mentorProfile.fields.map(f => f.fieldName)
+                        : [],
                 });
             }
         }

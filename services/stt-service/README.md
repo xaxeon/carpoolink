@@ -28,3 +28,7 @@ curl.exe -X POST http://localhost:4004/stt/chunk \
   -F "mentoringId=1" \
   -F "chunkIndex=0"
 ```
+
+## HTTP API
+
+모든 경로 앞에 `/stt`를 붙여 사용합니다.

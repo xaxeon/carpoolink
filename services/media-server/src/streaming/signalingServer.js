@@ -118,7 +118,9 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                             mentoringId,
                             peerId,
                             role,
-                            socket
+                            socket,
+                            isGroup: mentoring.isGroup,
+                            userId,
                         });
 
                         socketContext.set(socket.id, { mentoringId, peerId, role, userId });

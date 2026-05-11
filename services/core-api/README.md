@@ -14,6 +14,8 @@ npm run dev -w services/core-api
 
 ## HTTP API
 
+모든 경로 앞에 `/api`를 붙여 사용합니다.
+
 ### System
 
 - `GET /health`: 서비스 상태를 확인합니다.
@@ -54,3 +56,53 @@ npm run dev -w services/core-api
 
 - `GET /scripts`: 접근 가능한 스크립트 멘토링 목록을 조회합니다. `x-user-id`와 `type`(`all`/`group`/`one-on-one`) 쿼리를 사용합니다.
 - `GET /scripts/{mentoringId}`: 특정 멘토링의 스크립트 전문을 조회합니다. `x-user-id`가 필요합니다.
+- `PATCH /scripts/{mentoringId}/publish`: 특정 멘토링의 스크립트를 수정 후 발행합니다. `x-user-id`가 필요합니다.
+    
+    ```json
+    // request body 예시:
+    {
+        "scripts": [
+            {
+                "scriptId": "7",
+                "content": {
+                    "pieces": [
+                        {
+                            "text": "멘토님, 신입 개발자로서 가장 중요하게 생각하시는 역량이 무엇인가요?",
+                            "isMasked": false
+                        }
+                    ]
+                }
+            },
+            {
+                "scriptId": "8",
+                "content": {
+                    "pieces": [
+                        {
+                            "text": "네, 관련 자료는 제 개인 이메일인 ",
+                            "isMasked": false
+                        },
+                        {
+                            "text": "매우매우 민감한 정보!!",
+                            "isMasked": true
+                        },
+                        {
+                            "text": "으로 메일 주시면 보내드릴게요.",
+                            "isMasked": false
+                        }
+                    ]
+                }
+            },
+            {
+                "scriptId": "9",
+                "content": {
+                    "pieces": [
+                        {
+                            "text": "매우매우 민감한 정보!!",
+                            "isMasked": true
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+    ```

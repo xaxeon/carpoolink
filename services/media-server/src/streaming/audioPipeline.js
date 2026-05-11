@@ -11,6 +11,7 @@ export class AudioPipelineManager {
         if (!this.rooms.has(key)) {
             this.rooms.set(key, {
                 mentorAudioProducerId: null,
+                menteeAudioProducerId: null,
                 ttsProducerIds: new Set(),
                 pendingTtsMessages: []
             });
@@ -23,6 +24,14 @@ export class AudioPipelineManager {
     attachMentorAudioProducer(mentoringId, producerId) {
         const room = this.ensureRoom(mentoringId);
         room.mentorAudioProducerId = producerId;
+
+        this.notifyAudioCompositeChange(mentoringId);
+    }
+
+    // 멘티의 오디오 프로듀서 ID를 방에 연결하는 메서드 (1:1 멘토링에서 사용)
+    attachMenteeAudioProducer(mentoringId, producerId) {
+        const room = this.ensureRoom(mentoringId);
+        room.menteeAudioProducerId = producerId;
 
         this.notifyAudioCompositeChange(mentoringId);
     }
@@ -41,6 +50,10 @@ export class AudioPipelineManager {
 
         if (room.mentorAudioProducerId === producerId) {
             room.mentorAudioProducerId = null;
+        }
+
+        if (room.menteeAudioProducerId === producerId) {
+            room.menteeAudioProducerId = null;
         }
 
         room.ttsProducerIds.delete(producerId);
@@ -72,6 +85,7 @@ export class AudioPipelineManager {
         const compositePlan = {
             mentoringId: Number(mentoringId),
             mentorAudioProducerId: room.mentorAudioProducerId,
+            menteeAudioProducerId: room.menteeAudioProducerId,
             ttsProducerIds: [...room.ttsProducerIds]
         };
 
@@ -84,6 +98,7 @@ export class AudioPipelineManager {
 
         return {
             mentorAudioProducerId: room.mentorAudioProducerId,
+            menteeAudioProducerId: room.menteeAudioProducerId,
             ttsProducerIds: [...room.ttsProducerIds],
             pendingTtsMessages: room.pendingTtsMessages.length
         };

@@ -62,7 +62,7 @@ export default function SurveyIntroPage() {
           </span>
 
           {/* 시작하기 버튼 */}
-          <Link href="/survey/step1" className="w-full bg-[#FFCC00] text-[#1A1A1A] font-semibold text-lg py-4 rounded-2xl flex items-center justify-center shadow-lg hover:bg-[#E6B800] active:scale-[0.98] transition-all">
+          <Link href="/survey/question" className="w-full bg-[#FFCC00] text-[#1A1A1A] font-semibold text-lg py-4 rounded-2xl flex items-center justify-center shadow-lg hover:bg-[#E6B800] active:scale-[0.98] transition-all">
             시작하기
             <ArrowRight className="w-5 h-5 ml-2" strokeWidth={2.5} />
           </Link>

@@ -1,0 +1,244 @@
+name: Deploy Carpoolink Services
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy.yml"
+      - "services/**"
+      - "packages/**"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  REPO_OWNER: ${{ github.repository_owner }}
+
+jobs:
+  detectChanges:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      changed_services: ${{ steps.changes.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            core-api:
+              - 'services/core-api/**'
+              - 'packages/**'
+            chat-service:
+              - 'services/chat-service/**'
+              - 'packages/**'
+            media-server:
+              - 'services/media-server/**'
+              - 'packages/**'
+            question-service:
+              - 'services/question-service/**'
+              - 'packages/**'
+            stt-service:
+              - 'services/stt-service/**'
+              - 'packages/**'
+
+  buildAndPush:
+    name: Build and Push ${{ matrix.service }}
+    needs: detectChanges
+    runs-on: ubuntu-latest
+    if: needs.detectChanges.outputs.changed_services != '[]'
+    strategy:
+      matrix:
+        service: ${{ fromJSON(needs.detectChanges.outputs.changed_services) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. QEMU 설치 (멀티 아키텍처 빌드용)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.REPO_OWNER }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=${{ github.sha }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./services/${{ matrix.service }}/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REPO_OWNER }}/${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.REPO_OWNER }}/${{ matrix.service }}:buildcache,mode=max
+
+  getInstanceId:
+    name: Get EC2 Instance ID
+    runs-on: ubuntu-latest
+    outputs:
+      instance_id: ${{ steps.get_instance_id.outputs.instance_id }}
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Get EC2 Instance ID
+        id: get_instance_id
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=carpoolink-server" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId" \
+            --output text)
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+  deploy:
+    name: Deploy to EC2
+    needs: [buildAndPush, getInstanceId]
+    runs-on: ubuntu-latest
+    if: always() && needs.getInstanceId.outputs.instance_id != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Deploy Services to EC2
+        uses: peterkimzz/aws-ssm-send-command@master
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          instance-ids: ${{ needs.getInstanceId.outputs.instance_id }}
+          working-directory: /app
+          comment: Deploy Carpoolink Services
+          command: |
+            set -e
+            export HOME=/root
+            
+            # GitHub Container Registry 로그인
+            echo "${{ secrets.TK_GITHUB_ACCESS_TOKEN }}" \
+              | docker login ghcr.io \
+                -u ${{ secrets.TK_GITHUB_ACCESS_TOKEN_OWNER }} \
+                --password-stdin
+            
+            # 환경 변수 설정
+            echo "${{ secrets.ENV_FILE_B64 }}" | base64 -d > /app/.env
+            
+            # 네트워크 생성
+            docker network create carpoolink-network 2>/dev/null || true
+            
+            # 기존 컨테이너 정리
+            docker stop carpoolink-core-api 2>/dev/null || true && \
+            docker rm carpoolink-core-api 2>/dev/null || true
+            
+            docker stop carpoolink-chat-service 2>/dev/null || true && \
+            docker rm carpoolink-chat-service 2>/dev/null || true
+            
+            docker stop carpoolink-media-server 2>/dev/null || true && \
+            docker rm carpoolink-media-server 2>/dev/null || true
+            
+            docker stop carpoolink-question-service 2>/dev/null || true && \
+            docker rm carpoolink-question-service 2>/dev/null || true
+            
+            docker stop carpoolink-stt-service 2>/dev/null || true && \
+            docker rm carpoolink-stt-service 2>/dev/null || true
+
+            docker stop carpoolink-reverse-proxy 2>/dev/null || true && \
+            docker rm carpoolink-reverse-proxy 2>/dev/null || true
+            
+            # Core API 배포
+            docker pull ghcr.io/${{ env.REPO_OWNER }}/core-api:${{ github.sha }} && \
+            docker run --rm \
+              --name carpoolink-db-sync \
+              --network carpoolink-network \
+              --env-file /app/.env \
+              ghcr.io/${{ env.REPO_OWNER }}/core-api:${{ github.sha }} \
+              sh -lc 'npx prisma db push --schema=/app/packages/database/prisma/schema.prisma --skip-generate --accept-data-loss && npx prisma db seed --schema=/app/packages/database/prisma/schema.prisma' && \
+            docker run --restart always \
+              -d --name carpoolink-core-api \
+              -p 4000:4000 \
+              --network carpoolink-network \
+              --env-file /app/.env \
+              ghcr.io/${{ env.REPO_OWNER }}/core-api:${{ github.sha }}
+            
+            # Chat Service 배포
+            docker pull ghcr.io/${{ env.REPO_OWNER }}/chat-service:${{ github.sha }} && \
+            docker run --restart always \
+              -d --name carpoolink-chat-service \
+              -p 4001:4001 \
+              --network carpoolink-network \
+              --env-file /app/.env \
+              ghcr.io/${{ env.REPO_OWNER }}/chat-service:${{ github.sha }}
+            
+            # Media Server 배포
+            docker pull ghcr.io/${{ env.REPO_OWNER }}/media-server:${{ github.sha }} && \
+            docker run --restart always \
+              -d --name carpoolink-media-server \
+              -p 4002:4002 \
+              --network carpoolink-network \
+              --env-file /app/.env \
+              ghcr.io/${{ env.REPO_OWNER }}/media-server:${{ github.sha }}
+            
+            # Question Service 배포
+            docker pull ghcr.io/${{ env.REPO_OWNER }}/question-service:${{ github.sha }} && \
+            docker run --restart always \
+              -d --name carpoolink-question-service \
+              -p 4003:4003 \
+              --network carpoolink-network \
+              --env-file /app/.env \
+              ghcr.io/${{ env.REPO_OWNER }}/question-service:${{ github.sha }}
+            
+            # STT Service 배포
+            docker pull ghcr.io/${{ env.REPO_OWNER }}/stt-service:${{ github.sha }} && \
+            docker run --restart always \
+              -d --name carpoolink-stt-service \
+              -p 4004:4004 \
+              --network carpoolink-network \
+              --env-file /app/.env \
+              ghcr.io/${{ env.REPO_OWNER }}/stt-service:${{ github.sha }}
+
+            docker run --restart always \
+              -d --name carpoolink-reverse-proxy \
+              -p 80:80 \
+              --network carpoolink-network \
+              -v /app/infra/reverse-proxy/default.conf:/etc/nginx/conf.d/default.conf:ro \
+              nginx:1.27-alpine
+            
+            # 미사용 이미지 정리
+            docker image prune -af --filter "until=24h" || true
+            
+            # 배포 완료 메시지
+            echo "✅ Carpoolink Services deployed successfully!"
+            docker ps --filter "network=carpoolink-network" --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}"
