@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import apiClient from "@/lib/apiClient";
-import { PhoneOff, Users, Volume2, Settings, Mic, Video, VideoOff, MessageSquare, Lock } from "lucide-react";
+import { PhoneOff, Users, Volume2, Settings, Mic, Video, VideoOff, MessageSquare, Lock, AlertCircle } from "lucide-react";
+import { useMentoringSession } from "@/hooks/useMentoringSession";
 
 interface Question {
     id: number;
@@ -17,18 +16,15 @@ interface Question {
 
 export default function MentorLivePage() {
     const [isChatOpen, setIsChatOpen] = useState(true);
-    const params = useParams<{ id: string }>();
-    const mentoringId = params.id;
-    const [streamTitle, setStreamTitle] = useState<string | null>(null);
-    const [participantCount, setParticipantCount] = useState<number | null>(null);
     const [isExitPopupOpen, setIsExitPopupOpen] = useState(false);
     const [isMicOn, setIsMicOn] = useState(true);
     const [isCamOn, setIsCamOn] = useState(true);
-
-    // 💡 '질문 읽기' 활성화 상태
     const [isReading, setIsReading] = useState(false);
-
     const [currentIdx, setCurrentIdx] = useState(0);
+
+    // Hook 적용
+    const { sessionData, participantCount, isLoading, error, isConnected, endMentoring } =
+        useMentoringSession({ role: "mentor" });
 
     const questionQueue: Question[] = [
         {
@@ -67,46 +63,64 @@ export default function MentorLivePage() {
 
     const currentQuestion = questionQueue[currentIdx];
 
-    useEffect(() => {
-        if (!mentoringId) return;
-        let mounted = true;
-        (async () => {
-            try {
-                const res = await apiClient.get(`/api/mentorings/${mentoringId}`);
-                const data = res.data?.mentoring || res.data;
-                if (!mounted) return;
-                setStreamTitle(data?.title || null);
-                setParticipantCount(data?.participantCount ?? null);
-            } catch (err) {
-                console.error("멘토링 정보 로드 실패", err);
-            }
-        })();
-        return () => { mounted = false; };
-    }, [mentoringId]);
-
     // 💡 다음 질문으로 넘어가는 공통 함수 (넘어갈 때 읽기 상태 초기화)
     const handleNextQuestion = () => {
         setCurrentIdx((prev) => (prev + 1) % questionQueue.length);
-        setIsReading(false); // 질문이 바뀌면 활성화 상태를 끕니다.
+        setIsReading(false);
     };
+
+    const handleExitClick = async () => {
+        setIsExitPopupOpen(true);
+    };
+
+    const handleConfirmExit = async () => {
+        await endMentoring();
+        window.location.href = "/mentoring/live";
+    };
+
+    // 로딩/에러 상태 표시
+    if (isLoading) {
+        return (
+            <main className="flex flex-col w-full h-full bg-[#161616] text-white font-sans overflow-hidden items-center justify-center">
+                <div className="w-8 h-8 border-4 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-300">멘토링 세션 로드 중...</p>
+            </main>
+        );
+    }
+
+    if (error) {
+        return (
+            <main className="flex flex-col w-full h-full bg-[#161616] text-white font-sans overflow-hidden items-center justify-center">
+                <div className="bg-red-500/20 p-4 rounded-2xl mb-4">
+                    <AlertCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <p className="text-red-400 font-bold mb-4">{error}</p>
+                <Link href="/mentoring/live" className="bg-[#FFCC00] text-[#1A1A1A] font-bold px-6 py-3 rounded-xl hover:bg-[#E6B800]">
+                    목록으로 돌아가기
+                </Link>
+            </main>
+        );
+    }
 
     return (
         <main className="flex flex-col w-full h-full bg-[#161616] text-white font-sans overflow-hidden relative">
 
             {/* 헤더 영역 */}
             <header className="w-full px-5 py-4 flex items-center justify-between shrink-0 z-20">
-                <button onClick={() => setIsExitPopupOpen(true)} className="inline-flex items-center text-red-500 hover:opacity-80 transition-opacity">
+                <button onClick={handleExitClick} className="inline-flex items-center text-red-500 hover:opacity-80 transition-opacity">
                     <PhoneOff className="w-5 h-5 mr-2" strokeWidth={2.5} />
                     <span className="font-bold text-[17px] text-white">종료</span>
                 </button>
                 <div className="flex items-center gap-3">
                     <div className="flex items-center bg-[#2A2A2A] px-3 py-1.5 rounded-full">
-                        <div className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-                        <span className="text-xs font-bold text-gray-200 tracking-wider">LIVE</span>
+                        <div className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                        <span className="text-xs font-bold text-gray-200 tracking-wider">
+                            {isConnected ? 'LIVE' : 'OFF'}
+                        </span>
                     </div>
                     <div className="flex items-center text-gray-400 text-sm font-medium">
                         <Users className="w-4 h-4 mr-1.5" />
-                        {participantCount ?? 1284}
+                        {participantCount}
                     </div>
                 </div>
             </header>
@@ -246,9 +260,9 @@ export default function MentorLivePage() {
                             <button onClick={() => setIsExitPopupOpen(false)} className="flex-1 bg-gray-800 text-white font-bold py-4 rounded-2xl hover:bg-gray-700 transition-colors">
                                 취소
                             </button>
-                            <Link href="/mentoring/live" className="flex-1 bg-red-600 text-white font-bold py-4 rounded-2xl hover:bg-red-700 transition-colors text-center">
+                            <button onClick={handleConfirmExit} className="flex-1 bg-red-600 text-white font-bold py-4 rounded-2xl hover:bg-red-700 transition-colors text-center">
                                 종료
-                            </Link>
+                            </button>
                         </div>
                     </div>
                 </div>

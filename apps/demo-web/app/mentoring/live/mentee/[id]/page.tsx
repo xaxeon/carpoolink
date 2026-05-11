@@ -3,9 +3,8 @@
 // 💡 useRef와 useEffect를 추가로 불러옵니다. (자동 스크롤용)
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import apiClient from "@/lib/apiClient";
-import { ChevronLeft, Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown, AlertCircle } from "lucide-react";
+import { useMentoringSession } from "@/hooks/useMentoringSession";
 
 // 채팅 데이터의 타입 정의
 interface ChatMessage {
@@ -18,13 +17,13 @@ interface ChatMessage {
 
 export default function LiveMentoringPage() {
     const [isPaidMode, setIsPaidMode] = useState(false);
-    const params = useParams<{ id: string }>();
-    const mentoringId = params.id;
-    const [streamTitle, setStreamTitle] = useState<string | null>(null);
-    const [participantCount, setParticipantCount] = useState<number | null>(null);
     const [isPopupOpen, setIsPopupOpen] = useState(false);
     const [chatInput, setChatInput] = useState("");
     const [isAiOpen, setIsAiOpen] = useState(false);
+
+    // Hook 적용
+    const { sessionData, participantCount, isLoading, error, isConnected } =
+        useMentoringSession({ role: "mentee" });
 
     // 💡 1. 채팅 목록을 관리하는 State (기본 더미 데이터 2개 포함)
     const [chats, setChats] = useState<ChatMessage[]>([
@@ -39,25 +38,6 @@ export default function LiveMentoringPage() {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chats]);
-
-    useEffect(() => {
-        if (!mentoringId) return;
-        let mounted = true;
-        (async () => {
-            try {
-                const res = await apiClient.get(`/api/mentorings/${mentoringId}`);
-                const data = res.data?.mentoring || res.data;
-                if (!mounted) return;
-                setStreamTitle(data?.title || null);
-                setParticipantCount(data?.participantCount ?? null);
-            } catch (err) {
-                console.error("멘토링 정보 로드 실패", err);
-            }
-        })();
-        return () => { mounted = false; };
-    }, [mentoringId]);
-
-    // 새 채팅을 배열에 추가하는 공통 함수
     const addNewChat = (type: "free" | "paid", text: string) => {
         const newChat: ChatMessage = {
             id: Date.now(), // 고유 아이디 생성
@@ -97,6 +77,30 @@ export default function LiveMentoringPage() {
         setIsAiOpen(false);
     };
 
+    // 로딩/에러 상태 표시
+    if (isLoading) {
+        return (
+            <main className="flex flex-col w-full h-full bg-[#161616] text-white font-sans overflow-hidden items-center justify-center">
+                <div className="w-8 h-8 border-4 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-300">멘토링 세션 로드 중...</p>
+            </main>
+        );
+    }
+
+    if (error) {
+        return (
+            <main className="flex flex-col w-full h-full bg-[#161616] text-white font-sans overflow-hidden items-center justify-center">
+                <div className="bg-red-500/20 p-4 rounded-2xl mb-4">
+                    <AlertCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <p className="text-red-400 font-bold mb-4">{error}</p>
+                <Link href="/mentoring/live" className="bg-[#FFCC00] text-[#1A1A1A] font-bold px-6 py-3 rounded-xl hover:bg-[#E6B800]">
+                    목록으로 돌아가기
+                </Link>
+            </main>
+        );
+    }
+
     return (
         <main className="flex flex-col w-full h-full bg-[#161616] text-white relative font-sans overflow-hidden">
 
@@ -108,12 +112,14 @@ export default function LiveMentoringPage() {
                 </Link>
                 <div className="flex items-center gap-3">
                     <div className="flex items-center bg-[#2A2A2A] px-3 py-1.5 rounded-full">
-                        <div className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-                        <span className="text-xs font-bold text-gray-200 tracking-wider">LIVE</span>
+                        <div className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                        <span className="text-xs font-bold text-gray-200 tracking-wider">
+                            {isConnected ? 'LIVE' : 'OFF'}
+                        </span>
                     </div>
                     <div className="flex items-center text-gray-400 text-sm font-medium">
                         <Users className="w-4 h-4 mr-1.5" />
-                        {participantCount ?? 1284}
+                        {participantCount}
                     </div>
                 </div>
             </header>
