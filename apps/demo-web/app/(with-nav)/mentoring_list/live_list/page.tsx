@@ -121,15 +121,16 @@ function LiveListContent() {
     if (!isValidTitle || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await apiClient.post("/media/mentorings/start", {
+      const res = await apiClient.post("/media/mentorings/start", {
         title: titleInput.trim(),
         isGroup: true,
         hasCamera: true,
         hasMicrophone: true,
       });
+      const createdMentoringId = res.data?.mentoring?.mentoringId;
       setIsDrawerOpen(false);
       setTitleInput("");
-      router.push("/mentoring/live/mentor");
+      router.push(createdMentoringId ? `/mentoring/live/mentor/${createdMentoringId}` : "/mentoring/live/mentor");
     } catch (error) {
       alert("멘토링 시작에 실패했습니다.");
     } finally { setIsSubmitting(false); }
@@ -234,7 +235,7 @@ function LiveListContent() {
           filteredAndSortedStreams.map((stream) => (
             <Link
               key={stream.mentoringId}
-              href={userRole === "MENTOR" ? `/mentoring/live/mentor?id=${stream.mentoringId}` : `/mentoring/live/mentee?id=${stream.mentoringId}`}
+              href={userRole === "MENTOR" ? `/mentoring/live/mentor/${stream.mentoringId}` : `/mentoring/live/mentee/${stream.mentoringId}`}
               className="group flex flex-col gap-3"
             >
 
