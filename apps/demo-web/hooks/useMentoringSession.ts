@@ -75,7 +75,7 @@ export function useMentoringSession(options: UseMentoringSessionOptions) {
 
         try {
             // Socket.IO 연결
-            const serverUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4002";
+            const serverUrl = process.env.NEXT_PUBLIC_BASE_URI || "http://localhost:4002";
 
             const socket = io(
                 serverUrl,
