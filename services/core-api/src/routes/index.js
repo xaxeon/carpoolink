@@ -4,6 +4,7 @@ import usersRouter from './users.js';
 import mentorsRouter from './mentors.js';
 import mentoringsRouter from './mentorings.js';
 import scriptsRouter from './scripts.js';
+import questionsRouter from './questions.js';
 
 const router = Router();
 
@@ -12,5 +13,6 @@ router.use('/users', usersRouter);
 router.use('/mentors', mentorsRouter);
 router.use('/mentorings', mentoringsRouter);
 router.use('/scripts', scriptsRouter);
+router.use('/questions', questionsRouter);
 
 export default router;

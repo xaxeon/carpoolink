@@ -1,0 +1,11 @@
+### Question recommendations through core-api
+POST http://localhost:4000/questions/recommendations
+Content-Type: application/json
+x-user-id: 10
+
+{
+  "sessionId": 1,
+  "topic": "React 상태 관리",
+  "context": "useState와 useReducer의 차이를 학습 중이며, 어떤 상황에서 useReducer를 써야 하는지 궁금해하고 있습니다.",
+  "count": 3
+}

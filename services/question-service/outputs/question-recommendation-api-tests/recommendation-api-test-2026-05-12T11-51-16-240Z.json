@@ -1,0 +1,115 @@
+{
+  "status": "success",
+  "startedAt": "2026-05-12T11:51:16.241Z",
+  "completedAt": "2026-05-12T11:51:19.368Z",
+  "request": {
+    "model": "gpt-5-nano",
+    "reasoningEffort": "minimal",
+    "params": {
+      "sessionId": 42,
+      "topic": "프론트엔드 취업 포트폴리오에서 상태 관리 경험 설명하기",
+      "context": "멘티는 신입 프론트엔드 개발자 취업을 준비하고 있으며, React 프로젝트를 포트폴리오에 정리하고 있습니다.\n최근 프로젝트에서 장바구니, 필터, 모달, 비동기 로딩 상태가 섞이면서 useState만으로 상태 변경 흐름을 추적하기 어려웠습니다.\n멘토는 상태가 여러 이벤트에 의해 바뀌거나 변경 규칙이 복잡해질 때 useReducer를 고려할 수 있다고 설명했습니다.\n멘티는 아직 useReducer를 실제로 적용해 본 경험이 적고, 면접에서 useState와 useReducer의 차이를 어떻게 설명해야 할지 고민하고 있습니다.\n멘티가 이어서 물어볼 질문을 추천해 주세요.",
+      "count": 3,
+      "mentee": {
+        "id": 10,
+        "level": "junior-ready",
+        "interests": [
+          "React",
+          "frontend",
+          "portfolio"
+        ],
+        "goals": [
+          "상태 관리 선택 기준 이해",
+          "면접에서 프로젝트 경험 설명하기",
+          "포트폴리오 개선 방향 찾기"
+        ]
+      },
+      "mentor": {
+        "id": 3,
+        "expertise": [
+          "React",
+          "frontend architecture",
+          "technical interview"
+        ],
+        "role": "senior frontend engineer"
+      },
+      "answerabilityContext": {
+        "sessionTopic": "프론트엔드 취업 포트폴리오에서 상태 관리 경험 설명하기",
+        "previousScriptSections": [
+          "멘토는 포트폴리오에서 단순히 사용 기술을 나열하기보다 어떤 문제를 발견했고 어떤 기준으로 개선했는지를 설명하는 것이 중요하다고 안내했습니다.",
+          "멘토는 면접 답변에서 문제 상황, 선택지 비교, 선택 이유, 결과 순서로 말하면 이해하기 쉽다고 설명했습니다."
+        ],
+        "currentScriptSection": "현재 멘토는 장바구니, 필터, 모달, 비동기 로딩 상태가 섞인 React 프로젝트에서 useState만으로 상태 변경 흐름을 추적하기 어려웠던 상황을 예로 들고 있습니다.",
+        "currentSlideTitle": "상태 관리 복잡도와 useReducer 선택 기준",
+        "nextScriptSection": "다음에는 useReducer로 상태 전환 규칙을 정리한 경험을 포트폴리오와 면접 답변에 녹이는 방법을 다룰 예정입니다.",
+        "recentMentorUtterances": [
+          "상태가 여러 이벤트에 의해 바뀌고 변경 규칙이 복잡하면 useReducer를 고려할 수 있어요.",
+          "면접에서는 useReducer를 썼다는 사실보다 왜 useState만으로 부족했는지를 설명하는 게 더 중요합니다.",
+          "포트폴리오에는 상태 전환 규칙을 어떻게 정리했는지 보여주는 예시가 있으면 좋아요."
+        ],
+        "menteeProfile": "신입 프론트엔드 개발자 취업 준비생. React 프로젝트를 포트폴리오로 정리 중이며 상태 관리 선택 기준과 면접 설명 방식이 고민입니다.",
+        "mentorProfile": "시니어 프론트엔드 엔지니어. React 아키텍처, 상태 관리 리팩터링, 기술 면접 코칭 경험이 있습니다.",
+        "mentorExpertiseEvidence": [
+          "React 프로젝트에서 useState, useReducer, 전역 상태 관리 선택 기준을 리뷰한 경험이 있습니다.",
+          "신입 개발자의 포트폴리오 프로젝트 설명과 기술 면접 답변을 코칭한 경험이 있습니다."
+        ],
+        "mentorPastScripts": [
+          "상태 관리 선택은 기술 이름보다 상태 변경 규칙의 복잡도와 추적 가능성을 기준으로 설명하면 좋습니다.",
+          "면접 답변은 문제 상황, 대안, 선택 이유, 결과를 짧게 연결해야 합니다."
+        ],
+        "answeredQuestions": [
+          "useReducer와 useState의 기본적인 차이는 무엇인가요?"
+        ],
+        "queuedQuestions": [
+          "Redux도 같이 공부해야 하나요?"
+        ]
+      }
+    }
+  },
+  "pricing": {
+    "source": "https://platform.openai.com/docs/pricing",
+    "currency": "USD",
+    "unit": "per_1m_tokens",
+    "input": 0.05,
+    "output": 0.4
+  },
+  "costEstimate": {
+    "inputTokens": 1377,
+    "outputTokens": 254,
+    "estimatedUsd": 0.00017045
+  },
+  "response": {
+    "questions": [
+      {
+        "content": "상태 흐름이 복잡할 때 useReducer를 도입한 구체적인 기준을 포트폴리오에 어떻게 보여주면 좋을까요?",
+        "category": "concept",
+        "reason": "상태 관리 선택 기준을 포트폴리오에 설명하는 데 필요한 명확한 기준 제시를 요청하는 질문으로 바로 답변 가능할 가능성이 높습니다."
+      },
+      {
+        "content": "내가 본 프로젝트에서 useState로 한계가 있었던 구체적 사례를 면접용 한 문장 설명으로 어떻게 구성하면 좋을까요?",
+        "category": "application",
+        "reason": "문제 상황과 선택 이유를 간단히 요약하는 방법을 물어보는 질문으로 즉시 적용 가능하게 돕습니다."
+      },
+      {
+        "content": "useReducer를 활용한 상태 전환 규칙을 포트폴리오에 한 화면으로 시각화해 보여주려면 어떤 구성 요소가 필요할까요?",
+        "category": "application",
+        "reason": "포트폴리오 구성을 구체적으로 설계하는 데 필요한 검토 포인트를 얻을 수 있습니다."
+      }
+    ],
+    "metadata": {
+      "model": "gpt-5-nano",
+      "responseId": "resp_040699c32bed2a4c006a031434b3408190a8a2029c7fc2a86a",
+      "usage": {
+        "input_tokens": 1377,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 254,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 1631
+      }
+    }
+  }
+}

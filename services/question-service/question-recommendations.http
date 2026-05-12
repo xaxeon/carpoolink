@@ -1,0 +1,23 @@
+### Question recommendations
+POST http://localhost:4003/api/questions/recommendations
+Content-Type: application/json
+
+{
+  "sessionId": 1,
+  "topic": "React 상태 관리",
+  "context": "useState와 useReducer의 차이를 학습 중이며, 어떤 상황에서 useReducer를 써야 하는지 궁금해하고 있습니다.",
+  "count": 3,
+  "mentee": {
+    "id": 10,
+    "name": "김민지",
+    "level": "beginner",
+    "interests": ["frontend", "React"],
+    "goals": ["React 상태 관리 이해", "프로젝트에 적용"]
+  },
+  "mentor": {
+    "id": 3,
+    "name": "이준호",
+    "expertise": ["frontend", "React", "architecture"],
+    "role": "senior frontend engineer"
+  }
+}
