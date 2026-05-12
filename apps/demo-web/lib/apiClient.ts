@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // 1. Core API 클라이언트 생성 (환경 변수 적용)
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:4000',
+  baseURL: process.env.NEXT_PUBLIC_BASE_URI || 'http://localhost:4000',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -13,11 +13,11 @@ const apiClient = axios.create({
 // apiClient.ts 내부의 요청 인터셉터 부분
 apiClient.interceptors.request.use((config) => {
   const userId = localStorage.getItem('userId');
-  
+
   if (userId && !config.headers['x-user-id']) {
     config.headers['x-user-id'] = userId;
   }
-  
+
   return config;
 });
 
