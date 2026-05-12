@@ -37,7 +37,8 @@ export default function MentorLivePage() {
             socket,
             mentoringId: sessionData?.mentoringId?.toString() || "",
             peerId: peerId || "",
-            role: "mentor",
+            role: "MENTOR",
+            mentoringType: "GROUP"
         });
 
     const questionQueue: Question[] = [
