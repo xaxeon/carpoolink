@@ -1,7 +1,7 @@
 import express from 'express';
 import { clusterQuestions } from './lib/questionClusterClient.js';
 import { predictQuestion } from './lib/questionDetectorClient.js';
-import { rankQuestion } from './lib/answerabilityClient.js';
+import { rankQuestion, rankQuestions } from './lib/answerabilityClient.js';
 
 const app = express();
 const PORT = process.env.QUESTION_SERVICE_PORT || 4003;
@@ -80,6 +80,19 @@ app.post('/api/questions/rank', async (req, res) => {
         return res.json({ service: 'question-service', ...result });
     } catch (error) {
         const isInvalidRequest = error.message.includes('must be a non-empty string');
+        return res.status(isInvalidRequest ? 400 : 500).json({
+            error: isInvalidRequest ? 'INVALID_REQUEST' : 'RANKING_FAILED',
+            message: error.message,
+        });
+    }
+});
+
+app.post('/api/questions/rank-batch', async (req, res) => {
+    try {
+        const result = await rankQuestions(req.body ?? {});
+        return res.json({ service: 'question-service', ...result });
+    } catch (error) {
+        const isInvalidRequest = error.message.includes('questions') || error.message.includes('non-empty string');
         return res.status(isInvalidRequest ? 400 : 500).json({
             error: isInvalidRequest ? 'INVALID_REQUEST' : 'RANKING_FAILED',
             message: error.message,
