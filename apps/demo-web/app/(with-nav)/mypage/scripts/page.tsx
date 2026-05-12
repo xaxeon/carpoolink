@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+// 1. Suspense를 추가로 import 합니다.
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, FileText, Calendar, User, Users, ChevronRight, Edit3, CheckCircle2, Search } from "lucide-react";
 import apiClient from "@/lib/apiClient";
@@ -17,10 +18,11 @@ type ScriptItem = {
 
 const COLORS = ["bg-blue-500", "bg-emerald-500", "bg-purple-900", "bg-orange-900", "bg-pink-600"];
 
-export default function ScriptListPage() {
+// 2. 기존의 ScriptListPage를 ScriptListContent로 이름을 바꾸고 export default를 제거합니다.
+function ScriptListContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   // URL 쿼리 파라미터(?type=group)를 읽어 초기 탭 상태 결정
   const currentTabParam = searchParams.get("type") === "group" ? "1:N" : "1:1";
   const [activeTab, setActiveTab] = useState<"1:1" | "1:N">(currentTabParam);
@@ -31,11 +33,11 @@ export default function ScriptListPage() {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [scripts, setScripts] = useState<ScriptItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // 현재 접속 유저 권한 상태
   const [isUserMentor, setIsUserMentor] = useState(false);
 
-  // 탭 클릭 시 URL 쿼리 파라미터를 업데이트하는 함수
+  // 탭 클릭 시 URL 쿼리 파라터를 업데이트하는 함수
   const handleTabChange = (tab: "1:1" | "1:N") => {
     setActiveTab(tab);
     const type = tab === "1:1" ? "one-on-one" : "group";
@@ -46,14 +48,12 @@ export default function ScriptListPage() {
   useEffect(() => {
     const fetchInitialData = async () => {
       setIsLoading(true);
-      
+
       // [1] 유저 권한 확인 (스크립트 로딩과 분리하여 안전하게 실행)
       let isMentor = false;
       try {
         const userRes = await apiClient.get("/api/users/me");
-
-        isMentor = userRes.data?.role === "MENTOR"; 
-        
+        isMentor = userRes.data?.role === "MENTOR";
         setIsUserMentor(isMentor);
       } catch (userError) {
         console.error("유저 정보 로딩 실패:", userError);
@@ -63,13 +63,13 @@ export default function ScriptListPage() {
       try {
         const typeParam = activeTab === "1:1" ? "one-on-one" : "group";
         const scriptRes = await apiClient.get(`/api/scripts?type=${typeParam}`);
-        
+
         const mappedScripts: ScriptItem[] = scriptRes.data.mentorings.map((m: any) => {
           const d = m.startedAt ? new Date(m.startedAt) : null;
-          const dateStr = d 
+          const dateStr = d
             ? `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
             : "날짜 미상";
-          
+
           return {
             id: Number(m.mentoringId),
             mentorName: m.host?.nickname || "알 수 없음",
@@ -96,7 +96,7 @@ export default function ScriptListPage() {
     let list = [...scripts];
 
     if (searchQuery.trim() !== "") {
-      list = list.filter(script => 
+      list = list.filter(script =>
         script.topic.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
@@ -114,17 +114,16 @@ export default function ScriptListPage() {
   const handleScriptClick = (scriptId: number, isPublished: boolean) => {
     if (!isPublished) {
       if (isUserMentor) {
-        router.push(`/script/${scriptId}`); // 멘토: 미발행 스크립트 클릭 시 편집 뷰로 이동
+        router.push(`/script/${scriptId}`);
       }
-      // 멘티: 미발행 스크립트는 UI 단에서 클릭을 막으므로 여기 도달하지 않음
     } else {
-      router.push(`/mypage/scripts/${scriptId}`); // 공통: 발행 완료 스크립트 클릭 시 열람 뷰로 이동
+      router.push(`/mypage/scripts/${scriptId}`);
     }
   };
 
   return (
     <main className="flex flex-col w-full bg-white text-[#1A1A1A] font-sans min-h-[100dvh] pb-[80px]">
-      
+
       <header className="flex items-center justify-between px-2 py-4 sticky top-0 bg-white z-20 border-b border-gray-50">
         {!isSearchOpen ? (
           <>
@@ -142,7 +141,7 @@ export default function ScriptListPage() {
           <div className="flex items-center gap-3 w-full animate-in slide-in-from-right-4 duration-300 px-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" strokeWidth={2.5} />
-              <input 
+              <input
                 autoFocus
                 type="text"
                 placeholder="스크립트 제목 검색"
@@ -151,8 +150,8 @@ export default function ScriptListPage() {
                 className="w-full bg-gray-100 py-2 pl-10 pr-4 rounded-xl text-[14px] font-medium outline-none"
               />
             </div>
-            <button 
-              onClick={() => { setIsSearchOpen(false); setSearchQuery(""); }} 
+            <button
+              onClick={() => { setIsSearchOpen(false); setSearchQuery(""); }}
               className="text-[14px] font-bold text-gray-500 whitespace-nowrap"
             >
               취소
@@ -162,15 +161,15 @@ export default function ScriptListPage() {
       </header>
 
       <div className="flex w-full border-b border-gray-100">
-        <button 
-          onClick={() => handleTabChange("1:1")} 
+        <button
+          onClick={() => handleTabChange("1:1")}
           className={`flex-1 py-4 text-[15px] font-bold transition-all relative ${activeTab === "1:1" ? "text-[#1A1A1A]" : "text-gray-400"}`}
         >
           1:1 멘토링
           {activeTab === "1:1" && <div className="absolute bottom-0 left-0 w-full h-[2px] bg-[#1A1A1A]" />}
         </button>
-        <button 
-          onClick={() => handleTabChange("1:N")} 
+        <button
+          onClick={() => handleTabChange("1:N")}
           className={`flex-1 py-4 text-[15px] font-bold transition-all relative ${activeTab === "1:N" ? "text-[#1A1A1A]" : "text-gray-400"}`}
         >
           1:N 멘토링
@@ -199,13 +198,11 @@ export default function ScriptListPage() {
           </div>
         ) : processedScripts.length > 0 ? (
           processedScripts.map((script) => {
-            // 멘티이면서 미발행 상태인 스크립트 판별
             const isMenteeWaiting = !isUserMentor && !script.isPublished;
 
             return (
-              <div 
-                key={script.id} 
-                // 멘티 대기중일 때는 클릭 방지
+              <div
+                key={script.id}
                 onClick={() => !isMenteeWaiting && handleScriptClick(script.id, script.isPublished)}
                 className={`flex flex-col bg-white border border-gray-100 rounded-2xl p-5 shadow-sm transition-all
                   ${isMenteeWaiting ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'cursor-pointer hover:shadow-md active:scale-[0.98]'}
@@ -235,7 +232,7 @@ export default function ScriptListPage() {
                       <Calendar className="w-3.5 h-3.5" />
                       {script.date}
                     </div>
-                    
+
                     {script.isPublished ? (
                       <div className="flex items-center gap-1 text-green-600 font-bold">
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -244,7 +241,6 @@ export default function ScriptListPage() {
                     ) : (
                       <div className="flex items-center gap-1 text-[#FFCC00] font-bold">
                         <Edit3 className="w-3.5 h-3.5" />
-                        {/* 멘토면 "편집 필요", 멘티면 "발행 대기중" 출력 */}
                         {isUserMentor ? "편집 필요" : "발행 대기중"}
                       </div>
                     )}
@@ -263,5 +259,19 @@ export default function ScriptListPage() {
       </div>
 
     </main>
+  );
+}
+
+// 3. 페이지 자체는 이제 Suspense로 내부 콘텐츠를 감싸주는 역할만 합니다.
+export default function ScriptListPage() {
+  return (
+    // 클라이언트에서 쿼리 파라미터를 읽어올 때 깜빡임을 방지하기 위해 fallback UI를 제공합니다.
+    <Suspense fallback={
+      <div className="flex w-full min-h-[100dvh] items-center justify-center bg-white">
+        <div className="w-8 h-8 border-4 border-gray-200 border-t-[#FFCC00] rounded-full animate-spin"></div>
+      </div>
+    }>
+      <ScriptListContent />
+    </Suspense>
   );
 }
