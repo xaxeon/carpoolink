@@ -7,10 +7,10 @@ import scriptsRouter from './scripts.js';
 
 const router = Router();
 
-router.use('/api/surveys', surveyRouter);
-router.use('/api/users', usersRouter);
-router.use('/api/mentors', mentorsRouter);
-router.use('/api/mentorings', mentoringsRouter);
-router.use('/api/scripts', scriptsRouter);
+router.use('/surveys', surveyRouter);
+router.use('/users', usersRouter);
+router.use('/mentors', mentorsRouter);
+router.use('/mentorings', mentoringsRouter);
+router.use('/scripts', scriptsRouter);
 
 export default router;

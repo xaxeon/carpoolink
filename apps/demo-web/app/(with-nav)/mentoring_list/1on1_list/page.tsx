@@ -41,6 +41,7 @@ const getStatusMeta = (status: string) => {
         label: "진행 중",
         badgeClass: "bg-emerald-100 text-emerald-700"
       };
+    case "COMPLETED":
     case "COMPLETE":
       return {
         label: "완료",
@@ -59,8 +60,7 @@ const getPrimaryAction = (person: MentoringPerson, userRole: string | null) => {
     if (person.status === "READY") {
       return {
         label: "멘토링 시작",
-        type: "navigate" as const,
-        href: `/mentoring/1on1/${person.mentoringId}`
+        type: "start" as const
       };
     }
     if (person.status === "ON_AIR") {
@@ -70,7 +70,7 @@ const getPrimaryAction = (person: MentoringPerson, userRole: string | null) => {
         href: `/mentoring/1on1/${person.mentoringId}`
       };
     }
-    if (person.status === "COMPLETE") {
+    if (person.status === "COMPLETED") {
       return null;
     }
     return {
@@ -93,7 +93,7 @@ const getPrimaryAction = (person: MentoringPerson, userRole: string | null) => {
         href: `/mentoring/1on1/${person.mentoringId}`
       };
     }
-    if (person.status === "COMPLETE") {
+    if (person.status === "COMPLETE" || person.status === "COMPLETED") {
       return null;
     }
   }
@@ -117,6 +117,7 @@ export default function OneOnOneListPage() {
   const [activeCalendar, setActiveCalendar] = useState<MentoringPerson | null>(null);
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [startingMentoringId, setStartingMentoringId] = useState<number | null>(null);
 
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -135,32 +136,31 @@ export default function OneOnOneListPage() {
         const listRes = await apiClient.get("/api/mentorings/one-on-one");
 
         // 3. "상대 목록"이 아닌 "내가 참여한 1:1 멘토링 목록" 형태로 매핑
-        const source =
-          listRes.data?.mentorings ||
-          listRes.data?.items ||
-          listRes.data?.list ||
-          listRes.data?.peers ||
-          [];
+        const source = listRes.data?.mentorings || [];
+        const resolvedRole = storedRole || null;
 
         const mappedData = (source || []).map((item: any, index: number) => {
           const colors = ["bg-blue-500", "bg-emerald-500", "bg-orange-400", "bg-pink-400"];
 
-          const mentoringId = item.mentoringId;
-          const counterpartName = item.counterpartName;
+          const mentoringId = Number(item.mentoringId);
+          const counterpartName = item.counterpartName || item.counterpart?.nickname || item.host?.nickname || "이름 없음";
 
-          const schedule = item.startedAt || "일정 미정";
-          const status = String(item.status || "COMPLETE").toUpperCase();
+          const schedule = item.startedAt || item.scheduledAt || "일정 미정";
+          const status = String(item.status || item.rawStatus || "COMPLETE").toUpperCase();
 
           return {
             id: mentoringId,
             mentoringId,
             name: counterpartName,
-            role: item.counterpartRole || "직무 정보 없음",
-            title: item.title || "제목 없음",
+            role: item.counterpartRole || (resolvedRole === "MENTOR" ? "멘티" : "멘토") || "직무 정보 없음",
+            title: item.title || "멘토링 제목 없음",
+            lastMentoring: schedule,
             status,
             profileColor: colors[index % colors.length],
-            bookedDate: item.startedAT || null,
-            bookedTime: item.startedAT || null,
+            bookedDate: null,
+            bookedTime: null,
+            availableSlots: {},
+            messages: [],
           };
         });
 
@@ -190,6 +190,24 @@ export default function OneOnOneListPage() {
   const handleConfirmReservation = () => { /* 기존 로직 유지 */ };
   const handleCancelReservation = () => { /* 기존 로직 유지 */ };
   const handleSendMessage = () => { /* 기존 로직 유지 */ };
+
+  const handleStartMentoring = async (person: MentoringPerson) => {
+    if (startingMentoringId === person.mentoringId) return;
+
+    setStartingMentoringId(person.mentoringId);
+    try {
+      await apiClient.post(`/media/mentorings/${person.mentoringId}/start`, {
+        isGroup: false,
+      });
+
+      router.push(`/mentoring/1on1/${person.mentoringId}`);
+    } catch (error) {
+      console.error("멘토링 시작 실패:", error);
+      alert("멘토링 시작에 실패했습니다.");
+    } finally {
+      setStartingMentoringId(null);
+    }
+  };
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessage?.messages]);
 
@@ -244,14 +262,20 @@ export default function OneOnOneListPage() {
                   <span className={`text-[12px] font-bold px-2.5 py-1 rounded-full ${statusMeta.badgeClass}`}>{statusMeta.label}</span>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-xl mb-4 text-[13px]">
-                  <div className="flex gap-2 mb-1"><span className="font-bold text-gray-500 w-20">제목</span><span>{person.title}</span></div>
+                  <div className="flex gap-2 mb-1"><span className="font-bold text-gray-500 w-20">멘토링 제목</span><span>{person.title}</span></div>
                   <div className="flex gap-2"><span className="font-bold text-gray-500 w-14">일정</span><span className="font-bold">{person.lastMentoring}</span></div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveMessage(person)} className="flex-1 py-2.5 bg-gray-100 rounded-xl font-bold text-[14px] hover:bg-gray-200 transition-colors cursor-pointer">메시지</button>
                   {primaryAction && (
                     <button
+                      disabled={startingMentoringId === person.mentoringId}
                       onClick={() => {
+                        if (primaryAction.type === "start") {
+                          void handleStartMentoring(person);
+                          return;
+                        }
+
                         if (primaryAction.type === "navigate" && primaryAction.href) {
                           router.push(primaryAction.href);
                           return;
@@ -260,9 +284,9 @@ export default function OneOnOneListPage() {
                         setSelectedDate(person.bookedDate || null);
                         setSelectedTime(person.bookedTime || null);
                       }}
-                      className="flex-1 py-2.5 bg-[#1A1A1A] text-white rounded-xl font-bold text-[14px] hover:bg-black transition-colors cursor-pointer"
+                      className={`flex-1 py-2.5 bg-[#1A1A1A] text-white rounded-xl font-bold text-[14px] hover:bg-black transition-colors ${startingMentoringId === person.mentoringId ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
                     >
-                      {primaryAction.label}
+                      {startingMentoringId === person.mentoringId ? "시작 중..." : primaryAction.label}
                     </button>
                   )}
                 </div>

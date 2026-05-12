@@ -94,6 +94,34 @@ class InMemoryMentoringRepository {
         return normalizeMentoring(this.sessions.get(Number(mentoringId)) ?? null);
     }
 
+    // 멘토링 세션을 시작 상태로 전환하는 메서드
+    async startMentoring(mentoringId, userId) {
+        const key = Number(mentoringId);
+        const current = this.sessions.get(key);
+
+        if (!current) {
+            throw createHttpError(404, 'Mentoring not found.');
+        }
+
+        if (Number(current.userId) !== Number(userId)) {
+            throw createHttpError(403, '멘토링 세션을 시작할 권한이 없습니다.');
+        }
+
+        if (current.status !== 'READY') {
+            throw createHttpError(409, 'READY 상태의 멘토링만 시작할 수 있습니다.');
+        }
+
+        const updated = {
+            ...current,
+            status: 'ON_AIR',
+            startedAt: new Date(),
+            endedAt: null
+        };
+
+        this.sessions.set(key, updated);
+        return normalizeMentoring(updated);
+    }
+
     // 멘토링 세션을 종료하는 메서드
     async endMentoring(mentoringId) {
         const key = Number(mentoringId);
@@ -206,6 +234,53 @@ class PrismaMentoringRepository {
         });
 
         return normalizeMentoring(found);
+    }
+
+    // 멘토링 세션을 시작 상태로 전환하는 메서드
+    async startMentoring(mentoringId, userId) {
+        const numericMentoringId = Number(mentoringId);
+        const numericUserId = Number(userId);
+
+        const mentoring = await this.prisma.mentoring.findUnique({
+            where: {
+                mentoringId: BigInt(numericMentoringId)
+            },
+            select: {
+                mentoringId: true,
+                userId: true,
+                status: true,
+                isGroup: true
+            }
+        });
+
+        if (!mentoring) {
+            throw createHttpError(404, '멘토링을 찾을 수 없습니다.');
+        }
+
+        if (mentoring.isGroup) {
+            throw createHttpError(400, '1:1 멘토링만 시작할 수 있습니다.');
+        }
+
+        if (Number(mentoring.userId) !== numericUserId) {
+            throw createHttpError(403, '멘토링 세션을 시작할 권한이 없습니다.');
+        }
+
+        if (mentoring.status !== 'READY') {
+            throw createHttpError(409, 'READY 상태의 멘토링만 시작할 수 있습니다.');
+        }
+
+        const updated = await this.prisma.mentoring.update({
+            where: {
+                mentoringId: BigInt(numericMentoringId)
+            },
+            data: {
+                status: 'ON_AIR',
+                startedAt: new Date(),
+                endedAt: null
+            }
+        });
+
+        return normalizeMentoring(updated);
     }
 
     // 멘토링 세션을 데이터베이스에서 종료하는 메서드

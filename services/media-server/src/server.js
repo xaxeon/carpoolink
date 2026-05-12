@@ -16,7 +16,7 @@ app.use(express.json());
 
 const mentoringRepository = await createMentoringRepository();
 const audioPipeline = new AudioPipelineManager();
-const rtpForwarder = new RtpForwarder({sttServiceUrl: process.env.STT_SERVICE_URL || 'http://localhost:4004'});
+const rtpForwarder = new RtpForwarder({ sttServiceUrl: process.env.STT_SERVICE_URL || 'http://localhost:4004' });
 const mediaOrchestrator = new MediaSoupOrchestrator({ audioPipeline, rtpForwarder });
 
 await mediaOrchestrator.init();
@@ -116,6 +116,50 @@ app.post('/mentorings/start', async (req, res) => {
         });
     } catch (error) {
         console.error('[mentoring/start] failed', error);
+        const statusCode = error?.statusCode ?? 500;
+
+        if (statusCode !== 500) {
+            return res.status(statusCode).json({ message: error.message });
+        }
+
+        return res.status(500).json({
+            message: '멘토링 세션을 시작하는 데 실패했습니다'
+        });
+    }
+});
+
+// [POST] /mentorings/:mentoringId/start: 기존 1:1 멘토링 시작
+app.post('/mentorings/:mentoringId/start', async (req, res) => {
+    try {
+        const mentoringId = Number(req.params.mentoringId);
+        const userId = parseUserIdFromRequest(req);
+
+        if (!Number.isFinite(mentoringId)) {
+            return res.status(400).json({ message: '잘못된 멘토링 ID입니다' });
+        }
+
+        if (userId === null) {
+            return res.status(400).json({ message: 'x-user-id 헤더가 필요합니다.' });
+        }
+
+        await mentoringRepository.assertMentorUser(userId);
+
+        const mentoring = await mentoringRepository.startMentoring(mentoringId, userId);
+
+        await mediaOrchestrator.ensureRoom(mentoringId, {
+            isGroup: mentoring.isGroup
+        });
+
+        return res.json({
+            mentoring,
+            signaling: {
+                socketPath: '/socket.io',
+                hint: '멘토링 세션 참여자는 Socket.IO를 통해 연결하세요'
+            },
+            media: mediaOrchestrator.getRoomSnapshot(mentoringId)
+        });
+    } catch (error) {
+        console.error('[mentoring/start-by-id] failed', error);
         const statusCode = error?.statusCode ?? 500;
 
         if (statusCode !== 500) {

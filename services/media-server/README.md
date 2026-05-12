@@ -53,6 +53,23 @@ Request example:
 - 카메라와 마이크가 모두 준비된 경우에만 멘토링 생성
 - 검증 통과 시 멘토링 생성
 
+### `POST /mentorings/:mentoringId/start`
+
+기존 1:1 멘토링을 시작 상태로 전환합니다.
+`READY` 상태의 세션만 시작할 수 있으며, 성공 시 `status`가 `ON_AIR`로 바뀌고 mediasoup room이 준비됩니다.
+
+요청 헤더:
+
+- `x-user-id`: 멘토 사용자 ID (필수)
+
+동작:
+
+- `x-user-id`로 멘토 권한과 세션 소유자 여부를 검증
+- 세션이 `READY` 상태인지 확인
+- 세션 상태를 `ON_AIR`로 변경하고 `startedAt`을 갱신
+- 해당 `mentoringId`의 media room을 생성/확인
+- Socket.IO 연결 경로 정보와 room 스냅샷을 반환
+
 ### `POST /mentorings/:mentoringId/end`
 
 멘토링 종료 및 SFU room 정리를 수행합니다.
