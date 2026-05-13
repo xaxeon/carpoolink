@@ -116,7 +116,7 @@ export default function PrivateMentoringPage() {
 
   const handleEndMentoring = async () => {
     await endMentoring();
-    window.location.href = "/"; // 종료 후 이동할 경로 (필요시 수정)
+    window.location.href = "/mentoring_list/1on1_list"; // 종료 후 이동할 경로 (필요시 수정)
   };
 
   return (
