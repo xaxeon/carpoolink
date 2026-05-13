@@ -44,17 +44,17 @@ export function useMentoringSession(options: UseMentoringSessionOptions) {
 
         try {
             const res = await apiClient.get(`/media/mentorings/${mentoringId}`);
-            const data = res.data?.mentoring || res.data;
+            const data = res.data;
 
             if (isMountedRef.current) {
                 setSessionData({
-                    mentoringId: data?.mentoringId || data?.id,
-                    title: data?.title || "멘토링 세션",
-                    status: data?.status || "ON_AIR",
-                    participantCount: data?.participantCount || 0,
-                    host: data?.host || { userId: 0, nickname: "호스트" },
+                    mentoringId: data.mentoring.mentoringId,
+                    title: data?.mentoring?.title || "멘토링 세션",
+                    status: data?.mentoring?.status || "ON_AIR",
+                    participantCount: data?.media.peers.length || 0,
+                    host: { userId: data?.mentoring?.userId || 0, nickname: data?.mentoring?.nickname || "호스트" },
                 });
-                setParticipantCount(data?.participantCount || 0);
+                setParticipantCount(data?.mentoring?.participantCount || 0);
             }
         } catch (err) {
             if (isMountedRef.current) {
