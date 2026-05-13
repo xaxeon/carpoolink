@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { writeFileSync, unlinkSync } from 'fs';
+import { writeFileSync, unlinkSync, stat } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import FormData from 'form-data';
@@ -77,7 +77,7 @@ export class RtpForwarder {
         const ffmpeg = spawn('ffmpeg', [
             '-protocol_whitelist', 'file,udp,rtp',
             '-i', sdpPath,
-            '-af', 'silencedetect=noise=-30dB:d=1.5',
+            '-af', 'silencedetect=noise=-45dB:d=1.0',
             '-f', 's16le', '-ar', '16000', '-ac', '1',
             'pipe:1',
         ]);
@@ -95,26 +95,42 @@ export class RtpForwarder {
             userId,
         };
 
-        // 긴 침묵 기준: 3초 이상이면 문장 경계로 판단해 flush
-        const LONG_SILENCE_SEC = 3.0;
+        // 긴 침묵 기준: 2초 이상이면 문장 경계로 판단해 flush
+        const LONG_SILENCE_SEC = 2.0;
         // 누적 발화가 25초를 넘으면 강제 flush (Whisper 적정 길이)
         const MAX_PENDING_BYTES = 25 * PCM_BYTES_PER_SEC;
 
         ffmpeg.stdout.on('data', (chunk) => {
             state.pcmBuffer = Buffer.concat([state.pcmBuffer, chunk]);
+
+            // 침묵 없이 연속 발화 시, 미처리 구간이 최대치 초과하면 강제 flush
+            const unprocessedBytes = state.pcmBuffer.length - state.lastCutByte;
+            if (unprocessedBytes >= MAX_PENDING_BYTES) {
+                const speechPcm = state.pcmBuffer.slice(state.lastCutByte);
+                state.pendingPcm = Buffer.concat([state.pendingPcm, speechPcm]);
+                state.lastCutByte = state.pcmBuffer.length;
+                this._flushPending(state);
+            }
         });
 
         ffmpeg.stderr.on('data', (data) => {
             const text = data.toString();
 
-            const startMatch = text.match(/silence_start:\s*([\d.]+)/);
-            if (startMatch) {
+            for (const startMatch of text.matchAll(/silence_start:\s*([\d.]+)/g)) {
                 const silenceStartSec = parseFloat(startMatch[1]);
                 state.lastSilenceStartSec = silenceStartSec;
 
                 // 절대 바이트 위치 → pcmBuffer 내 상대 위치로 변환
                 const absEndByte = Math.floor(silenceStartSec * PCM_BYTES_PER_SEC);
                 const relEndByte = absEndByte - state.pcmByteOffset;
+
+                // 이미 처리된 구간의 stale 이벤트 무시
+                if (relEndByte <= state.lastCutByte) {
+                    state.lastSilenceStartSec = silenceStartSec;
+                    return;
+                }
+
+                state.lastCutByte = relEndByte;
 
                 const speechPcm = state.pcmBuffer.slice(state.lastCutByte, relEndByte);
                 if (speechPcm.length > 0) {
@@ -128,8 +144,7 @@ export class RtpForwarder {
                 }
             }
 
-            const endMatch = text.match(/silence_end:\s*([\d.]+)/);
-            if (endMatch) {
+            for (const endMatch of text.matchAll(/silence_end:\s*([\d.]+)/g)) {
                 const silenceEndSec = parseFloat(endMatch[1]);
                 const silenceDuration = state.lastSilenceStartSec !== null
                     ? silenceEndSec - state.lastSilenceStartSec
@@ -139,10 +154,8 @@ export class RtpForwarder {
                 state.lastCutByte = absEndByte - state.pcmByteOffset;
                 state.lastSpeechStartSec = silenceEndSec;
 
-                // 긴 침묵이면 누적된 발화를 flush
-                if (silenceDuration >= LONG_SILENCE_SEC) {
-                    this._flushPending(state);
-                }
+                this._flushPending(state);
+
             }
         });
 
@@ -154,9 +167,12 @@ export class RtpForwarder {
             }
             this._flushPending(state);
 
-            try { unlinkSync(state.sdpPath); } catch {}
+            try { unlinkSync(state.sdpPath); } catch { }
             this._usedPorts.delete(state.port);
             this.active.delete(producer.id);
+
+            state.consumer.close();
+            state.plainTransport.close();
         });
 
         this.active.set(producer.id, state);
@@ -200,8 +216,12 @@ export class RtpForwarder {
     stop(producerId) {
         const state = this.active.get(producerId);
         if (!state) return;
-        state.ffmpeg.kill('SIGTERM');
-        state.consumer.close();
-        state.plainTransport.close();
+        if (state.ffmpeg.stdin.writable) {
+            state.ffmpeg.stdin.write('q');
+            state.ffmpeg.stdin.end();
+        }
+        else {
+            state.ffmpeg.kill('SIGTERM');
+        }
     }
 }
