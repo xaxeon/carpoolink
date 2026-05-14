@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, useCallback, use } from "react";
 import { Device, types as MediaSoupTypes } from "mediasoup-client";
 import { Socket } from "socket.io-client";
-import { resolve } from "path";
-import { request } from "http";
 
 interface WebRtcSessionConfig {
     socket: Socket | null;
@@ -103,7 +101,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
                     requestId: `get-rtp-caps-${Date.now()}`,
                     action: "getRtpCapabilities",
                     data: {},
-                }, (res: any) => res?.of ? resolve(res) : reject(new Error(res?.error)));
+                }, (res: any) => res?.ok ? resolve(res) : reject(new Error(res?.error)));
             });
 
             console.log("🚀 Loading MediaSoup device...");

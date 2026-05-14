@@ -92,7 +92,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                 switch (action) {
                     case 'joinMentoring': {
                         const mentoringId = Number(data.mentoringId);
-                        const role = data.role ?? 'mentee';
+                        const role = data.role ?? 'MENTEE';
                         const peerId = data.userId ?? socket.id;
 
                         if (!Number.isFinite(mentoringId)) {
@@ -107,7 +107,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
 
                         const userId = resolveUserIdFromSocket(socket, data);
 
-                        if (role === 'mentor') {
+                        if (role === 'MENTOR') {
                             if (userId === null) {
                                 throw new Error('멘토 권한이 필요합니다.');
                             }

@@ -136,8 +136,8 @@ export class MediaSoupOrchestrator {
             throw new Error(`Peer ${peerId}은 이미 방에 존재합니다.`);
         }
 
-        if (role === 'mentor') {
-            const mentorExists = [...room.peers.values()].some((peer) => peer.role === 'mentor');
+        if (role === 'MENTOR') {
+            const mentorExists = [...room.peers.values()].some((peer) => peer.role === 'MENTOR');
 
             if (mentorExists) {
                 throw new Error('이 멘토링은 이미 멘토가 있습니다.');
@@ -145,20 +145,20 @@ export class MediaSoupOrchestrator {
         }
 
         if (!room.isGroup) {
-            if (role !== 'mentor' && role !== 'mentee' && role !== 'tts-bot') {
+            if (role !== 'MENTOR' && role !== 'MENTEE' && role !== 'TTS-BOT') {
                 throw new Error('1:1 멘토링에서는 mentor/mentee/tts-bot role만 사용할 수 있습니다.');
             }
 
-            if (role === 'mentee') {
-                const menteeExists = [...room.peers.values()].some((peer) => peer.role === 'mentee');
+            if (role === 'MENTEE') {
+                const menteeExists = [...room.peers.values()].some((peer) => peer.role === 'MENTEE');
 
                 if (menteeExists) {
                     throw new Error('1:1 멘토링에는 멘티 1명만 참여할 수 있습니다.');
                 }
             }
 
-            if (role === 'tts-bot') {
-                const ttsExists = [...room.peers.values()].some((peer) => peer.role === 'tts-bot');
+            if (role === 'TTS-BOT') {
+                const ttsExists = [...room.peers.values()].some((peer) => peer.role === 'TTS-BOT');
 
                 if (ttsExists) {
                     throw new Error('1:1 멘토링에는 tts-bot 1개만 연결할 수 있습니다.');
@@ -249,7 +249,7 @@ export class MediaSoupOrchestrator {
             throw new Error('멘토링 Room이나 Peer를 찾을 수 없습니다.');
         }
 
-        if (peer.role === 'mentee' && room.isGroup) {
+        if (peer.role === 'MENTEE' && room.isGroup) {
             throw new Error('멘티는 1:N 멘토링에서 미디어를 송출할 수 없습니다.');
         }
 
@@ -257,7 +257,7 @@ export class MediaSoupOrchestrator {
             throw new Error('1:1 멘토링은 오디오만 송출할 수 있습니다.');
         }
 
-        if (peer.role === 'tts-bot' && kind !== 'audio') {
+        if (peer.role === 'TTS-BOT' && kind !== 'audio') {
             throw new Error('tts-bot role은 오디오 미디어만 송출할 수 있습니다.');
         }
 
@@ -267,19 +267,19 @@ export class MediaSoupOrchestrator {
         peer.producers.set(producer.id, producer);
 
         if (kind === 'audio') {
-            if (peer.role === 'mentor') {
+            if (peer.role === 'MENTOR') {
                 this.audioPipeline.attachMentorAudioProducer(mentoringId, producer.id);
             }
 
-            if (peer.role === 'mentee') {
+            if (peer.role === 'MENTEE') {
                 this.audioPipeline.attachMenteeAudioProducer(mentoringId, producer.id);
             }
 
-            if (peer.role === 'tts-bot') {
+            if (peer.role === 'TTS-BOT') {
                 this.audioPipeline.attachTtsAudioProducer(mentoringId, producer.id);
             }
 
-            const shouldForward = peer.role === 'mentor' || (!room.isGroup && peer.role === 'mentee');
+            const shouldForward = peer.role === 'MENTOR' || (!room.isGroup && peer.role === 'MENTEE');
             if (shouldForward && peer.userId != null) {
                 this.rtpForwarder.start({
                     router: room.router,

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/86-mentoring-media
     paths:
       - ".github/workflows/deploy.yml"
       - "services/**"
