@@ -140,4 +140,44 @@ router.get('/one-on-one', requireUser, async (req, res, next) => {
     }
 });
 
+// [POST] /mentorings/:id/join - 멘토링 참여 기록(History) 명시적 생성
+router.post('/:id/join', requireUser, async (req, res, next) => {
+    try {
+        const mentoringId = BigInt(req.params.id);
+        const userId = req.user.userId;
+
+        // 1. 방장인지 확인 (방장은 History 불필요)
+        const mentoring = await prisma.mentoring.findUnique({ where: { mentoringId } });
+        if (mentoring && Number(mentoring.userId) === Number(userId)) {
+            return res.json({ success: true, isHost: true });
+        }
+
+        // 2. 멘티라면 History 확인 및 생성
+        const existingHistory = await prisma.mentoringHistory.findFirst({
+            where: { mentoringId, userId: BigInt(userId) },
+        });
+
+        if (!existingHistory) {
+            try {
+                // DB에 기록 생성 시도
+                await prisma.mentoringHistory.create({
+                    data: { mentoringId, userId: BigInt(userId) },
+                });
+            } catch (error) {
+                // 중복 방지
+                if (error.code === 'P2002') {
+                    console.log('✅ [Join API] 방 입장 기록이 이미 생성되어 통과합니다 (Race condition 방어).');
+                } else {
+                    // 다른 진짜 에러라면 정상적으로 던짐
+                    throw error;
+                }
+            }
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
 export default router;
