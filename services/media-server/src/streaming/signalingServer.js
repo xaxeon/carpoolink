@@ -50,12 +50,16 @@ function sendError(socket, requestId, error) {
     });
 }
 
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+
 export function createSignalingServer({ httpServer, mediaOrchestrator, mentoringRepository, audioPipeline }) {
     const io = new Server(httpServer, {
         cors: {
-            origin: '*',
-            methods: ['GET', 'POST']
-        }
+            origin: CORS_ORIGIN,
+            methods: ['GET', 'POST'],
+            credentials: true
+        },
+        transports: ['websocket', 'polling']
     });
 
     const socketContext = new Map();

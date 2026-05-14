@@ -158,7 +158,7 @@ export default function MentorLivePage() {
             }
 
             // 목록으로 이동
-            window.location.href = "/mentoring/live";
+            window.location.href = "/mentoring_list/live_list";
         } catch (err) {
             console.error("멘토링 종료 실패:", err);
             alert("방송 종료 중 오류가 발생했습니다.");

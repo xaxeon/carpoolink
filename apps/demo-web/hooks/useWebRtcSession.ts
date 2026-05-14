@@ -417,30 +417,6 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
                 );
             });
 
-            // 7. Socket 이벤트 수신
-            useEffect(() => {
-                if (!config.socket?.connected) return;
-
-                const handleSignal = async (message: any) => {
-                    try {
-                        if (message.event === "new-producer") {
-                            console.log("📢 New producer:", message.data);
-                            const { producerId, kind } = message.data;
-
-                            // 💡 [수정] 위에서 만든 통합 헬퍼 함수를 호출합니다.
-                            await requestConsume(producerId, kind);
-                        }
-                    } catch (err) {
-                        console.error("Signal 처리 오류:", err);
-                    }
-                };
-
-                config.socket.on("signal", handleSignal);
-                return () => {
-                    config.socket?.off("signal", handleSignal);
-                };
-            }, [config.socket, requestConsume]);
-
             // 내부 consume 함수 호출 (기존 6번)
             await consume(
                 rtpParams.id,
@@ -462,6 +438,30 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
             console.error("Failed to consume remote stream:", err);
         }
     }, [config.socket, consume]);
+
+    // 7. Socket 이벤트 수신
+    useEffect(() => {
+        if (!config.socket?.connected) return;
+
+        const handleSignal = async (message: any) => {
+            try {
+                if (message.event === "new-producer") {
+                    console.log("📢 New producer:", message.data);
+                    const { producerId, kind } = message.data;
+
+                    // 💡 [수정] 위에서 만든 통합 헬퍼 함수를 호출합니다.
+                    await requestConsume(producerId, kind);
+                }
+            } catch (err) {
+                console.error("Signal 처리 오류:", err);
+            }
+        };
+
+        config.socket.on("signal", handleSignal);
+        return () => {
+            config.socket?.off("signal", handleSignal);
+        };
+    }, [config.socket, requestConsume]);
 
     // 8. 초기화
     const isGroupMentee = config.role === "MENTEE" && config.mentoringType === "GROUP";
