@@ -54,6 +54,7 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
 
 export function createSignalingServer({ httpServer, mediaOrchestrator, mentoringRepository, audioPipeline }) {
     const io = new Server(httpServer, {
+        path: '/media/socket.io',
         cors: {
             origin: CORS_ORIGIN,
             methods: ['GET', 'POST'],
