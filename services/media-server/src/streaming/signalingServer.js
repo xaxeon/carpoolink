@@ -89,6 +89,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
             const { requestId, action, data = {} } = message;
 
             try {
+                let result;
                 switch (action) {
                     case 'joinMentoring': {
                         const mentoringId = Number(data.mentoringId);
@@ -128,6 +129,12 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                             userId,
                         });
 
+                        result = {
+                            peerId,
+                            ...joinResult,
+                            audioPipeline: audioPipeline.getRoomSnapshot(mentoringId)
+                        };
+
                         socketContext.set(socket.id, { mentoringId, peerId, role, userId });
 
                         sendReply(socket, requestId, {
@@ -160,6 +167,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         }
 
                         sendReply(socket, requestId, room.router.rtpCapabilities);
+                        result = room.router.rtpCapabilities;
                         break;
                     }
                     case 'createWebRtcTransport': {
@@ -332,8 +340,20 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                     default:
                         throw new Error(`알 수 없는 signaling 액션: ${action}`);
                 }
+
+                if (typeof ack === 'function') {
+                    ack({ ok: true, data: result });
+                } else {
+                    sendReply(socket, requestId, result);
+                }
             } catch (error) {
-                sendError(socket, requestId, error);
+                console.error('Signaling error:', error);
+
+                if (typeof ack === 'function') {
+                    ack({ ok: false, error: error?.message ?? 'Unhandled signaling error' });
+                } else {
+                    sendError(socket, requestId, error);
+                }
             }
         });
 
