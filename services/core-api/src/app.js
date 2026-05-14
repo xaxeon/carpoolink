@@ -15,7 +15,14 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+const corsOptions = {
+    origin: [
+        'http://localhost:3000', 
+        'https://carpoolink.duckdns.org'
+    ],
+    credentials: true, 
+};
+app.use(cors(corsOptions));
 
 // 테스트 엔드포인트
 app.get('/', (req, res) => {
@@ -26,6 +33,7 @@ app.get('/health', (req, res) => {
     res.json({ ok: true });
 });
 
+app.use('/api', apiRouter);
 app.use(apiRouter);
 
 export default app;
