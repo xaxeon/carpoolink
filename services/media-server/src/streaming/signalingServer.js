@@ -85,9 +85,9 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
     }
 
     io.on('connection', (socket) => {
-        socket.on('signal', async (message = {}) => {
+        socket.on('signal', async (message = {}, callback) => {
             const { requestId, action, data = {} } = message;
-
+            console.log(`Received signaling message: ${action}`);
             try {
                 let result;
                 switch (action) {
@@ -184,6 +184,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         });
 
                         sendReply(socket, requestId, transport);
+                        result = transport;
                         break;
                     }
                     case 'connectWebRtcTransport': {
@@ -201,6 +202,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         });
 
                         sendReply(socket, requestId, { connected: true });
+                        result = { connected: true };
                         break;
                     }
                     case 'produce': {
@@ -232,6 +234,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                             },
                             context.peerId
                         );
+                        result = produced;
                         break;
                     }
                     case 'consume': {
@@ -261,6 +264,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         });
 
                         sendReply(socket, requestId, consumed);
+                        result = consumed;
                         break;
                     }
                     case 'resumeConsumer': {
@@ -277,6 +281,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         });
 
                         sendReply(socket, requestId, { resumed: true });
+                        result = { resumed: true };
                         break;
                     }
                     case 'listProducers': {
@@ -292,6 +297,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         );
 
                         sendReply(socket, requestId, producerIds);
+                        result = producerIds;
                         break;
                     }
                     case 'ttsEnqueue': {
@@ -311,6 +317,10 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                             queued: true,
                             message: 'TTS request queued; attach a tts-bot audio producer to inject actual synthesized audio'
                         });
+                        result = {
+                            queued: true,
+                            message: 'TTS request queued; attach a tts-bot audio producer to inject actual synthesized audio'
+                        };
                         break;
                     }
                     case 'leaveMentoring': {
@@ -335,22 +345,23 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
 
                         socketContext.delete(socket.id);
                         sendReply(socket, requestId, { left: true });
+                        result = { left: true };
                         break;
                     }
                     default:
                         throw new Error(`알 수 없는 signaling 액션: ${action}`);
                 }
 
-                if (typeof ack === 'function') {
-                    ack({ ok: true, data: result });
+                if (typeof callback === 'function') {
+                    callback({ ok: true, data: result });
                 } else {
                     sendReply(socket, requestId, result);
                 }
             } catch (error) {
                 console.error('Signaling error:', error);
 
-                if (typeof ack === 'function') {
-                    ack({ ok: false, error: error?.message ?? 'Unhandled signaling error' });
+                if (typeof callback === 'function') {
+                    callback({ ok: false, error: error?.message ?? 'Unhandled signaling error' });
                 } else {
                     sendError(socket, requestId, error);
                 }

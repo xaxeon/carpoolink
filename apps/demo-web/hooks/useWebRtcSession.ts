@@ -101,7 +101,14 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
                     requestId: `get-rtp-caps-${Date.now()}`,
                     action: "getRtpCapabilities",
                     data: {},
-                }, (res: any) => res?.ok ? resolve(res) : reject(new Error(res?.error)));
+                }, (res: any) => {
+                    console.log("📩 RTP Capabilities 서버 응답:", res);
+                    if (res?.ok) {
+                        resolve(res);
+                    } else {
+                        reject(new Error(res?.error || `서버 에러 발생: ${JSON.stringify(res)}`));
+                    }
+                });
             });
 
             console.log("🚀 Loading MediaSoup device...");
@@ -113,7 +120,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
             return device;
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : "Device 초기화 실패";
-            console.error("❌ Device init error:", errorMsg);
+            console.error("❌ Device init error:", err);
             if (isMountedRef.current) {
                 setError(errorMsg);
             }
