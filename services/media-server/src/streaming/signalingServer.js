@@ -93,7 +93,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                     case 'joinMentoring': {
                         const mentoringId = Number(data.mentoringId);
                         const role = data.role ?? 'mentee';
-                        const peerId = data.peerId ?? socket.id;
+                        const peerId = data.userId ?? socket.id;
 
                         if (!Number.isFinite(mentoringId)) {
                             throw new Error('유효하지 않은 멘토링 ID입니다.');
@@ -145,6 +145,21 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                             },
                             peerId
                         );
+                        break;
+                    }
+                    case 'getRtpCapabilities': {
+                        const context = socketContext.get(socket.id);
+
+                        if (!context) {
+                            throw new Error('joinMentoring이 먼저 호출되어야 합니다.');
+                        }
+
+                        const room = mediaOrchestrator.rooms.get(Number(context.mentoringId));
+                        if (!room) {
+                            throw new Error('멘토링 세션이 존재하지 않습니다.');
+                        }
+
+                        sendReply(socket, requestId, room.router.rtpCapabilities);
                         break;
                     }
                     case 'createWebRtcTransport': {

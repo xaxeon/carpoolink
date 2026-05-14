@@ -98,35 +98,20 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
             console.log("🔧 Getting RTP Capabilities...");
 
             // RTP Capabilities 요청
-            const { data: rouRtpCapabilities } = await new Promise<{ data: any }>((resolve, reject) => {
-                config.socket?.emit(
-                    "signal",
-                    {
-                        requestId: `get-rtp-caps-${Date.now()}`,
-                        action: "getRtpCapabilities",
-                        data: {},
-                    },
-                    (response: any) => {
-                        if (response?.ok) {
-                            console.log("✅ Got RTP Capabilities");
-                            resolve(response);
-                        } else {
-                            console.error("❌ Failed to get RTP Capabilities:", response?.error);
-                            reject(new Error(response?.error || "RTP 능력 조회 실패"));
-                        }
-                    }
-                );
+            const response = await new Promise<{ data: any }>((resolve, reject) => {
+                config.socket?.emit("signal", {
+                    requestId: `get-rtp-caps-${Date.now()}`,
+                    action: "getRtpCapabilities",
+                    data: {},
+                }, (res: any) => res?.of ? resolve(res) : reject(new Error(res?.error)));
             });
 
             console.log("🚀 Loading MediaSoup device...");
             const device = new Device();
-            await device.load({ routerRtpCapabilities: rouRtpCapabilities });
+            await device.load({ routerRtpCapabilities: response.data });
             console.log("✅ MediaSoup device loaded");
 
-            if (isMountedRef.current) {
-                deviceRef.current = device;
-            }
-
+            deviceRef.current = device;
             return device;
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : "Device 초기화 실패";
@@ -149,8 +134,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
                     requestId: `create-send-transport-${Date.now()}`,
                     action: "createWebRtcTransport",
                     data: { direction: "send" },
-                },
-                (response: any) => {
+                }, (response: any) => {
                     if (!response.ok) return reject(response.error);
 
                     const transportParams = response.data;
@@ -163,12 +147,11 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
 
                     transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
                         try {
-                            config.socket?.emit(
-                                "signal", {
+                            config.socket?.emit("signal", {
                                 requestId: `connect-send-transport-${Date.now()}`,
                                 action: "connectWebRtcTransport",
                                 data: {
-                                    transportId: transportParams.transportId,
+                                    transportId: transport.id,
                                     dtlsParameters,
                                 },
                             }, (res: any) => res.ok ? callback() : errback(new Error(res?.error)));
