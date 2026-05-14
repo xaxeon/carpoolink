@@ -107,6 +107,7 @@ model MentoringHistory {
   mentoring Mentoring @relation(fields: [mentoringId], references: [mentoringId])
 
   @@map("mentoring_histories")
+  @@unique([mentoringId, userId])
 }
 
 // 멘토링 분야
