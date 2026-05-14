@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, use } from "react";
 import { Device, types as MediaSoupTypes } from "mediasoup-client";
 import { Socket } from "socket.io-client";
+import { resolve } from "path";
 
 interface WebRtcSessionConfig {
     socket: Socket | null;
@@ -234,72 +235,61 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
     );
 
     // 4. Recv Transport 생성
-    const createRecvTransport = useCallback(
-        async (device: Device) => {
-            try {
-                const { data: transportParams } = await new Promise<{ data: any }>((resolve, reject) => {
-                    config.socket?.emit(
-                        "signal",
-                        {
-                            requestId: `create-recv-transport-${Date.now()}`,
-                            action: "createWebRtcTransport",
-                            data: { producing: false, consuming: true },
-                        },
-                        (response: any) => {
-                            if (response?.ok) resolve(response);
-                            else reject(new Error(response?.error || "Recv Transport 생성 실패"));
-                        }
-                    );
-                });
+    const createRecvTransport = (device: Device) => {
+        return new Promise<void>((resolve, reject) => {
+            if (!config.socket) return reject(new Error("소켓이 없습니다"));
 
-                const transport = device.createRecvTransport({
-                    id: transportParams.transportId,
-                    iceParameters: transportParams.iceParameters,
-                    iceCandidates: transportParams.iceCandidates,
-                    dtlsParameters: transportParams.dtlsParameters
-                });
+            config.socket.emit(
+                "signal",
+                {
+                    requestId: `create-recv-transport-${Date.now()}`,
+                    action: "createWebRtcTransport",
+                    data: { direction: "recv" },
+                },
+                (response: any) => {
+                    if (!response.ok) return reject(response.error);
 
-                transport.on("connectionstatechange", (state) => {
-                    console.log("🚨 Recv transport state:", state);
-                });
+                    const transportParams = response.data;
+                    const transport = device.createRecvTransport({
+                        id: transportParams.transportId,
+                        iceParameters: transportParams.iceParameters,
+                        iceCandidates: transportParams.iceCandidates,
+                        dtlsParameters: transportParams.dtlsParameters
+                    });
 
-                transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-                    try {
-                        config.socket?.emit(
-                            "signal",
-                            {
-                                requestId: `connect-recv-transport-${Date.now()}`,
-                                action: "connectWebRtcTransport",
-                                data: {
-                                    transportId: transportParams.transportId,
-                                    dtlsParameters,
+                    transport.on("connectionstatechange", (state) => {
+                        console.log("🚨 Recv transport state:", state);
+                    });
+
+                    transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+                        try {
+                            config.socket?.emit(
+                                "signal",
+                                {
+                                    requestId: `connect-recv-transport-${Date.now()}`,
+                                    action: "connectWebRtcTransport",
+                                    data: {
+                                        transportId: transportParams.transportId,
+                                        dtlsParameters,
+                                    },
                                 },
-                            },
-                            (response: any) => {
-                                if (response?.ok) callback();
-                                else errback(new Error(response?.error));
-                            }
-                        );
-                    } catch (err) {
-                        errback(err instanceof Error ? err : new Error(String(err)));
-                    }
-                });
+                                (response: any) => {
+                                    if (response?.ok) callback();
+                                    else errback(new Error(response?.error));
+                                }
+                            );
+                        } catch (err) {
+                            errback(err instanceof Error ? err : new Error(String(err)));
+                        }
+                    });
 
-                if (isMountedRef.current) {
                     recvTransportRef.current = transport;
+                    console.log("✅ Recv transport created");
+                    resolve();
                 }
-
-                return transport;
-            } catch (err) {
-                const errorMsg = err instanceof Error ? err.message : "Recv Transport 생성 실패";
-                if (isMountedRef.current) {
-                    setError(errorMsg);
-                }
-                throw err;
-            }
-        },
-        [config.socket]
-    );
+            )
+        })
+    }
 
     // 5. Producer 생성 (로컬 미디어 송출)
     const produceAudio = useCallback(

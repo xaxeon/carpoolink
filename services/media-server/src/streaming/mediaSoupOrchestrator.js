@@ -293,7 +293,7 @@ export class MediaSoupOrchestrator {
         producer.on('transportclose', () => {
             peer.producers.delete(producer.id);
             this.audioPipeline.detachAudioProducer(mentoringId, producer.id);
-            this.rtpForwarderder.stop(producer.id);
+            this.rtpForwarder.stop(producer.id);
         });
 
         return {
