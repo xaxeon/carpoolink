@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, use } from "react";
 import { Device, types as MediaSoupTypes } from "mediasoup-client";
 import { Socket } from "socket.io-client";
 import { resolve } from "path";
+import { request } from "http";
 
 interface WebRtcSessionConfig {
     socket: Socket | null;
@@ -138,105 +139,70 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
     }, [config.socket]);
 
     // 3. Send Transport 생성
-    const createSendTransport = useCallback(
-        async (device: Device) => {
-            try {
-                const { data: transportParams } = await new Promise<{ data: any }>((resolve, reject) => {
-                    config.socket?.emit(
-                        "signal",
-                        {
-                            requestId: `create-send-transport-${Date.now()}`,
-                            action: "createWebRtcTransport",
-                            data: { producing: true, consuming: false },
-                        },
-                        (response: any) => {
-                            if (response?.ok) resolve(response);
-                            else reject(new Error(response?.error || "Send Transport 생성 실패"));
-                        }
-                    );
-                });
+    const createSendTransport = (device: Device): Promise<MediaSoupTypes.Transport> => {
+        return new Promise((resolve, reject) => {
+            if (!config.socket) return reject(new Error("소켓이 없습니다"));
 
-                const transport = device.createSendTransport({
-                    id: transportParams.transportId,
-                    iceParameters: transportParams.iceParameters,
-                    iceCandidates: transportParams.iceCandidates,
-                    dtlsParameters: transportParams.dtlsParameters
-                });
+            config.socket.emit(
+                "signal",
+                {
+                    requestId: `create-send-transport-${Date.now()}`,
+                    action: "createWebRtcTransport",
+                    data: { direction: "send" },
+                },
+                (response: any) => {
+                    if (!response.ok) return reject(response.error);
 
-                transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-                    try {
-                        config.socket?.emit(
-                            "signal",
-                            {
+                    const transportParams = response.data;
+                    const transport = device.createSendTransport({
+                        id: transportParams.transportId,
+                        iceParameters: transportParams.iceParameters,
+                        iceCandidates: transportParams.iceCandidates,
+                        dtlsParameters: transportParams.dtlsParameters
+                    });
+
+                    transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+                        try {
+                            config.socket?.emit(
+                                "signal", {
                                 requestId: `connect-send-transport-${Date.now()}`,
                                 action: "connectWebRtcTransport",
                                 data: {
                                     transportId: transportParams.transportId,
                                     dtlsParameters,
                                 },
-                            },
-                            (response: any) => {
-                                if (response?.ok) callback();
-                                else errback(new Error(response?.error));
-                            }
-                        );
-                    } catch (err) {
-                        errback(err instanceof Error ? err : new Error(String(err)));
-                    }
-                });
+                            }, (res: any) => res.ok ? callback() : errback(new Error(res?.error)));
+                        } catch (err) {
+                            errback(err as Error);
+                        }
+                    });
 
-                transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
-                    try {
-                        const { data: produceParams } = await new Promise<{ data: any }>((resolve, reject) => {
-                            config.socket?.emit(
-                                "signal",
-                                {
-                                    requestId: `produce-${Date.now()}`,
-                                    action: "produce",
-                                    data: {
-                                        transportId: transportParams.transportId,
-                                        kind,
-                                        rtpParameters,
-                                        appData
-                                    },
+                    transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
+                        try {
+                            config.socket?.emit("signal", {
+                                requestId: `produce-${Date.now()}`,
+                                action: "produce",
+                                data: {
+                                    transportId: transportParams.transportId,
+                                    kind,
+                                    rtpParameters,
+                                    appData
                                 },
-                                (response: any) => {
-                                    if (response?.ok) resolve(response);
-                                    else reject(new Error(response?.error));
-                                }
-                            );
-                        });
+                            }, (res: any) => res.ok ? callback({ id: res.data.producerId || res.data.id }) : errback(new Error(res?.error)));
+                        } catch (err) { errback(err as Error); }
+                    });
 
-                        const serverProducerId = produceParams.producerId || produceParams.id;
-                        callback({ id: serverProducerId });
-                    } catch (err) {
-                        errback(err instanceof Error ? err : new Error(String(err)));
-                    }
-                });
-
-                transport.on("connectionstatechange", (state) => {
-                    console.log("Send transport state:", state);
-                });
-
-                if (isMountedRef.current) {
                     sendTransportRef.current = transport;
+                    console.log("✅ Send transport created");
+                    resolve(transport);
                 }
-
-                return transport;
-            } catch (err) {
-                const errorMsg = err instanceof Error ? err.message : "Send Transport 생성 실패";
-                if (isMountedRef.current) {
-                    setError(errorMsg);
-                }
-                throw err;
-            }
-        },
-        [config.socket]
-    );
+            );
+        });
+    }
 
     // 4. Recv Transport 생성
-    const createRecvTransport = (device: Device) => {
-        return new Promise<void>((resolve, reject) => {
+    const createRecvTransport = (device: Device): Promise<MediaSoupTypes.Transport> => {
+        return new Promise((resolve, reject) => {
             if (!config.socket) return reject(new Error("소켓이 없습니다"));
 
             config.socket.emit(
@@ -285,7 +251,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
 
                     recvTransportRef.current = transport;
                     console.log("✅ Recv transport created");
-                    resolve();
+                    resolve(transport);
                 }
             )
         })
