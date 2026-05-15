@@ -46,15 +46,26 @@ export function useMentoringSession(options: UseMentoringSessionOptions) {
             const res = await apiClient.get(`/media/mentorings/${mentoringId}`);
             const data = res.data;
 
+            console.log("🔍 미디어 서버 응답 데이터:", data); // 데이터 구조 확인용
+
             if (isMountedRef.current) {
+                // 1. 서버 응답 구조 대응 (mentoring 객체 안에 있거나, 평평한 구조이거나)
+                const mentoringInfo = data.mentoring || data;
+
                 setSessionData({
-                    mentoringId: data.mentoring.mentoringId,
-                    title: data?.mentoring?.title || "멘토링 세션",
-                    status: data?.mentoring?.status || "ON_AIR",
-                    participantCount: data?.media.peers.length || 0,
-                    host: { userId: data?.mentoring?.userId || 0, nickname: data?.mentoring?.nickname || "호스트" },
+                    // mentoringInfo에서 ID를 가져오되, 없으면 URL 파라미터의 mentoringId를 숫자로 변환해 사용
+                    mentoringId: mentoringInfo?.mentoringId || Number(mentoringId),
+                    title: mentoringInfo?.title || "멘토링 세션",
+                    status: mentoringInfo?.status || "ON_AIR",
+                    participantCount: data?.media?.peers?.length || 0,
+                    
+                    host: { 
+                        userId: mentoringInfo?.userId || 0, 
+                        nickname: mentoringInfo?.nickname || "호스트" 
+                    },
                 });
-                setParticipantCount(data?.mentoring?.participantCount || 0);
+                // 참여자 수 상태 업데이트
+                setParticipantCount(data?.media?.peers?.length || 0);
             }
         } catch (err) {
             if (isMountedRef.current) {
