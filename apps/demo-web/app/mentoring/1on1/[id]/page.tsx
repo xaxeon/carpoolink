@@ -17,6 +17,9 @@ export default function PrivateMentoringPage() {
   const [userId, setUserId] = useState<number>(2);
   const [userName, setUserName] = useState<string>("익명"); // 💡 유저 이름 상태 추가
 
+  // 💡 [추가] 상대방 닉네임을 담을 새로운 상태
+  const [opponentNickname, setOpponentNickname] = useState<string>("상대방 연결 대기 중...");
+
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
   const [isChatMode, setIsChatMode] = useState(false);
@@ -30,7 +33,7 @@ export default function PrivateMentoringPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]); // 더미 데이터 제거
 
   useEffect(() => {
-    const storedRole = localStorage.getItem("role")?.toUpperCase();
+    const storedRole = localStorage.getItem("userRole")?.toUpperCase();
     if (storedRole) setRole(storedRole);
 
     const storedUserId = localStorage.getItem("userId");
@@ -56,6 +59,19 @@ export default function PrivateMentoringPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 💡 [추가] 내가 누구냐에 따라 기본 상대방 이름 세팅
+  useEffect(() => {
+    if (sessionData) {
+      if (role === "MENTEE") {
+        // 내가 멘티면 상대방은 당연히 방장(멘토)
+        setOpponentNickname(sessionData.host.nickname);
+      } else {
+        // 내가 멘토면 멘티 접속을 기다림
+        setOpponentNickname("멘티 (연결 대기 중)");
+      }
+    }
+  }, [sessionData, role]);
+
   // 💡 [추가] 실제 채팅 서버(4001번) 연결 로직
   useEffect(() => {
     const mentoringIdStr = sessionData?.mentoringId?.toString();
@@ -74,7 +90,6 @@ export default function PrivateMentoringPage() {
     newChatSocket.on("connect", () => {
       console.log("✅ [1:1 채팅] 소켓 연결 성공!");
 
-      // 💡 여기서 백엔드의 verifyChatJoinAccess 가 작동하여 권한을 검사합니다!
       newChatSocket.emit("join_chat", {
         mentoringId: Number(mentoringIdStr),
         userId: Number(userId),
@@ -82,10 +97,8 @@ export default function PrivateMentoringPage() {
       }, (res: any) => {
         if (res?.ok) {
           console.log("✅ [1:1 채팅] 방 입장 완료!");
-          // 입장 성공 시 과거 채팅 내역 불러오기
           newChatSocket.emit("get_message_history", { mentoringId: Number(mentoringIdStr) });
         } else {
-          // 입장권(History)이 없거나 방이 종료된 경우 튕겨냄
           console.error(`❌ [1:1 채팅] 방 입장 실패:`, res?.error);
           alert(res?.error || "채팅방 참여 권한이 없습니다.");
           window.location.href = "/mentoring_list/1on1_list";
@@ -93,21 +106,46 @@ export default function PrivateMentoringPage() {
       });
     });
 
-    // 과거 채팅 내역 수신
+    // 💡 [추가] 상대방이 접속했을 때 실시간으로 이름표 업데이트
+    newChatSocket.on("user_joined", (data: any) => {
+      console.log("👋 상대방 입장 이벤트 수신:", data);
+
+      const incomingNickname = data.nickname || data.userName;
+      
+      // 내 닉네임과 다른 사람(상대방)이 들어왔을 때만 업데이트
+      if (incomingNickname && incomingNickname !== userName) {
+        setOpponentNickname(incomingNickname);
+      }
+    });
+
+    // 💡 과거 채팅 내역에서 상대방 진짜 이름 가져오기
     newChatSocket.on("message_history", (historyData: any[]) => {
-      const mapped = historyData.map(m => ({
-        id: m.mentoringChatId || m.id,
-        sender: String(m.userId) === String(userId) ? "me" : "other",
-        text: m.content,
-      })) as ChatMessage[];
+      const mapped = historyData.map(m => {
+        const isMe = String(m.userId) === String(userId);
+        
+        // 내 메시지가 아닌데 이름 정보가 있다면 업데이트!
+        if (!isMe && (m.user?.nickname || m.userName)) {
+          setOpponentNickname(m.user?.nickname || m.userName);
+        }
+
+        return {
+          id: m.mentoringChatId || m.id,
+          sender: isMe ? "me" : "other",
+          text: m.content,
+        };
+      }) as ChatMessage[];
+      
       setMessages(mapped);
     });
 
-    // 새 메시지 수신
+    // 💡 새 메시지가 왔을 때도 상대방 진짜 이름 업데이트
     newChatSocket.on("new_message", (m: any) => {
-      // 💡 핵심 수정: 서버가 보내준 메시지가 '내가 보낸 것'이라면 무시합니다!
-      // (이미 handleSendMessage에서 내 화면에 그렸기 때문)
       if (String(m.userId) === String(userId)) return;
+
+      // 상대방 이름 정보가 포함되어 있다면 업데이트
+      if (m.user?.nickname || m.userName) {
+        setOpponentNickname(m.user?.nickname || m.userName);
+      }
 
       setMessages(prev => [...prev, {
         id: m.mentoringChatId || m.id || Date.now(),
@@ -121,7 +159,7 @@ export default function PrivateMentoringPage() {
     return () => {
       newChatSocket.disconnect();
     };
-  }, [sessionData?.mentoringId, userId, userName]);
+  }, [sessionData?.mentoringId, userId, userName, role]); // role 의존성 추가 권장
 
   // 원격 오디오 스트림 수신 및 연결
   useEffect(() => {
@@ -296,7 +334,8 @@ export default function PrivateMentoringPage() {
                 </div>
               </div>
 
-              <h2 className="text-2xl font-extrabold mb-1">{sessionData ? sessionData.host.nickname : "연결 중..."}</h2>
+              {/* 💡 [수정] 중앙 프로필 이름 변경 */}
+              <h2 className="text-2xl font-extrabold mb-1">{opponentNickname}</h2>
               <p className="text-gray-500 text-[14px]">{isLoading ? "세션 정보를 불러오는 중입니다" : "1:1 멘토링 세션"}</p>
 
               <div className="flex gap-4 mt-8">
