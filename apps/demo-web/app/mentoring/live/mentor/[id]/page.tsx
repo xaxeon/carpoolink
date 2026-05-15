@@ -26,13 +26,58 @@ interface ChatMessage {
     content: string;
 }
 
+// ============================================================================
+// [Wrapper 컴포넌트] 사용자 정보(localStorage)가 준비될 때까지 대기
+// ============================================================================
 export default function MentorLivePage() {
     const params = useParams();
     const mentoringId = params?.id as string;
 
+    const [isReady, setIsReady] = useState(false);
     const [role, setRole] = useState<string>("MENTOR");
-    const [userId, setUserId] = useState<number>(2);
+    const [userId, setUserId] = useState<number | null>(null);
     const [userName, setUserName] = useState<string>("멘토");
+
+    useEffect(() => {
+        // 1. 로컬스토리지에서 멘토 정보 확정 (멘티 페이지의 initAndJoin 로직과 유사)
+        const storedRole = localStorage.getItem("role")?.toUpperCase() || "MENTOR";
+        const storedUserId = localStorage.getItem("userId");
+        const storedName = localStorage.getItem("nickname") || "멘토";
+
+        setRole(storedRole);
+        setUserName(storedName);
+
+        if (storedUserId) {
+            setUserId(Number(storedUserId));
+            setIsReady(true); // 정보 로드 완료 시에만 다음 단계로 이동
+        } else {
+            // 멘토인데 ID가 없는 경우 예외 처리
+            console.error("멘토 ID를 찾을 수 없습니다.");
+        }
+    }, []);
+
+    // 정보를 읽어오는 동안 보여줄 로딩 화면 (멘티 페이지 로딩 UI와 통일)
+    if (!isReady || !userId) {
+        return (
+            <main className="flex flex-col w-full h-[100dvh] bg-[#161616] text-white items-center justify-center space-y-5">
+                <div className="w-12 h-12 border-4 border-[#FFCC00]/20 border-t-[#FFCC00] rounded-full animate-spin"></div>
+                <div className="text-center space-y-1.5">
+                    <h2 className="text-xl font-bold text-gray-200 tracking-tight">방송 세션을 준비 중입니다...</h2>
+                    <p className="text-gray-400 text-sm">최종 권한을 확인하고 미디어 서버에 연결합니다.</p>
+                </div>
+            </main>
+        );
+    }
+
+    // 정보가 확정된 후에만 실제 소켓/WebRTC 로직이 있는 컴포넌트 마운트
+    return <MentorLiveContent mentoringId={mentoringId} role={role} userId={userId} userName={userName} />;
+}
+
+
+// ============================================================================
+// [실제 화면 컴포넌트] 소켓 연결 및 WebRTC 로직 (참조값 고정)
+// ============================================================================
+function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringId: string, role: string, userId: number, userName: string }) {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -46,46 +91,34 @@ export default function MentorLivePage() {
     const [chats, setChats] = useState<ChatMessage[]>([]);
     const [onlineUserCount, setOnlineUserCount] = useState<number>(0);
 
-    const [isInitialized, setIsInitialized] = useState(false);
-
+    // 💡 훅에 넘겨주는 옵션들을 useMemo로 고정 (무한 루프 방지 핵심)
     const mentoringOptions = useMemo(() => ({
         role,
-        userId: userId || 0,
+        userId,
     }), [role, userId]);
 
     const { sessionData, isLoading, error, isConnected, peerId, socket, endMentoring } =
-        useMentoringSession(isInitialized ? mentoringOptions : { role: "MENTOR", userId: 0 });
+        useMentoringSession(mentoringOptions); // 이제 정보가 확실하므로 isInitialized 가드 불필요
 
     const webRtcConfig = useMemo(() => ({
         socket,
-        mentoringId: sessionData?.mentoringId?.toString() || mentoringId || "",
+        mentoringId: sessionData?.mentoringId?.toString() || mentoringId,
         peerId: peerId || "",
         role: "MENTOR",
         mentoringType: "GROUP" as const
-    }), [socket, sessionData?.mentoringId, mentoringId, peerId]); // 의존성 관리
+    }), [socket, sessionData?.mentoringId, mentoringId, peerId]);
 
-    // 메모이제이션된 config 전달
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } =
         useWebRtcSession(webRtcConfig);
 
+    // 질문 큐 데이터
     const questionQueue: Question[] = [
         { id: 1, type: "paid", isPrivate: true, author: "김세종", avatar: "👨‍💼", content: '"How do you negotiate equity in a Series B startup without losing the offer?"' },
         { id: 2, type: "free", isPrivate: false, author: "이유진", avatar: "👩‍💼", content: '"Can you share some tips on building a tech portfolio from scratch?"' }
     ];
-
     const currentQuestion = questionQueue[currentIdx];
 
-    useEffect(() => {
-        const storedRole = localStorage.getItem("role")?.toUpperCase();
-        if (storedRole) setRole(storedRole);
-        const storedUserId = localStorage.getItem("userId");
-        if (storedUserId) setUserId(Number(storedUserId));
-        const storedName = localStorage.getItem("nickname") || "멘토";
-        setUserName(storedName);
-
-        setIsInitialized(true);
-    }, []);
-
+    // [채팅 소켓 설정]
     useEffect(() => {
         if (!mentoringId || !userId) return;
 
@@ -143,12 +176,7 @@ export default function MentorLivePage() {
         };
     }, [mentoringId, userId, userName]);
 
-    useEffect(() => {
-        if (isChatOpen) {
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [chats, isChatOpen]);
-
+    // [비디오 스트림 연결]
     useEffect(() => {
         if (videoRef.current && localStream) {
             if (videoRef.current.srcObject !== localStream) {
@@ -158,20 +186,21 @@ export default function MentorLivePage() {
         }
     }, [localStream, isCameraOn]);
 
+    // [채팅 스크롤]
+    useEffect(() => {
+        if (isChatOpen) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [chats, isChatOpen]);
+
     const handleNextQuestion = () => {
         setCurrentIdx((prev) => (prev + 1) % questionQueue.length);
         setIsReading(false);
     };
 
-    // 멘토링 세션 완전 종료 처리
     const handleConfirmExit = async () => {
         try {
-            // 프론트엔드 WebRTC/Socket.io 세션 종료
-            if (endMentoring) {
-                await endMentoring();
-            }
-
-            // 목록으로 이동
+            if (endMentoring) await endMentoring();
             window.location.href = "/mentoring_list/live_list";
         } catch (err) {
             console.error("멘토링 종료 실패:", err);
@@ -179,11 +208,12 @@ export default function MentorLivePage() {
         }
     };
 
+    // 로딩 및 에러 처리 (Content 컴포넌트 내부용)
     if (isLoading) {
         return (
             <main className="flex flex-col w-full h-[100dvh] bg-[#161616] text-white items-center justify-center">
                 <div className="w-8 h-8 border-4 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin mb-4"></div>
-                <p className="text-gray-300">멘토링 세션 로드 중...</p>
+                <p className="text-gray-300">미디어 세션 연결 중...</p>
             </main>
         );
     }
@@ -203,9 +233,10 @@ export default function MentorLivePage() {
         );
     }
 
+    // 메인 라이브 화면 UI (기존과 동일)
     return (
         <main className="flex flex-col w-full h-[100dvh] bg-[#161616] text-white font-sans overflow-hidden relative">
-
+            {/* ... 헤더, 질문카드, 비디오, 채팅창, 푸터 UI 코드 ... */}
             <header className="w-full px-5 py-4 flex items-center justify-between shrink-0 z-20">
                 <button onClick={() => setIsExitPopupOpen(true)} className="inline-flex items-center text-red-500">
                     <PhoneOff className="w-5 h-5 mr-2" strokeWidth={2.5} />
@@ -224,10 +255,8 @@ export default function MentorLivePage() {
             </header>
 
             <div className="flex-1 flex flex-col px-4 overflow-hidden relative">
-
                 <div className={`flex flex-col transition-all duration-500 ${!isChatOpen ? 'flex-1 justify-center' : 'justify-start pt-2'}`}>
-
-                    {/* 상단 질문 카드 */}
+                    {/* 질문 카드 */}
                     <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 ${currentQuestion.type === 'paid' ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
                         <div className="flex flex-col gap-3 flex-1">
                             <div className="flex items-center justify-between w-full">
@@ -284,44 +313,25 @@ export default function MentorLivePage() {
                     </div>
                 </div>
 
-                {/* 실시간 채팅 내역 (읽기 전용) */}
+                {/* 채팅 목록 */}
                 {isChatOpen && (
                     <div className="flex-1 flex flex-col mt-4 animate-in fade-in slide-in-from-bottom-8 duration-500 overflow-hidden">
                         <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pb-6 pr-2">
-                            {chats.length === 0 ? (
-                                <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-                                    아직 채팅 내역이 없습니다.
-                                </div>
-                            ) : (
-                                chats.map((chat) => {
-                                    const isMentor = sessionData?.host?.userId && String(chat.senderId) === String(sessionData.host.userId);
-                                    const profileImage = isMentor ? "/images/mentor_profile.jpg" : "/images/mentee_profile.jpg";
-
-                                    return (
-                                        <div key={chat.id} className="flex gap-3">
-                                            <img
-                                                src={profileImage}
-                                                alt={isMentor ? "멘토 프로필" : "멘티 프로필"}
-                                                className="w-9 h-9 rounded-full object-cover shrink-0 bg-gray-800 border-2 border-[#FFCC00]"
-                                            />
-
-                                            <div className="flex flex-col items-start">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
-                                                    {chat.type === 'paid' && <span className="bg-[#FFCC00] text-[#1A1A1A] text-[10px] font-extrabold px-1.5 py-0.5 rounded">유료 질문</span>}
-                                                </div>
-                                                <p className={`text-[15px] leading-relaxed break-all ${chat.type === 'paid' ? 'text-[#FFCC00]' : 'text-gray-100'}`}>
-                                                    {chat.content}
-                                                </p>
-                                            </div>
+                            {chats.map((chat) => (
+                                <div key={chat.id} className="flex gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-gray-800 border-2 border-[#FFCC00] shrink-0" />
+                                    <div className="flex flex-col items-start">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
+                                            {chat.type === 'paid' && <span className="bg-[#FFCC00] text-[#1A1A1A] text-[10px] font-extrabold px-1.5 py-0.5 rounded">유료 질문</span>}
                                         </div>
-                                    );
-                                })
-                            )}
+                                        <p className={`text-[15px] leading-relaxed break-all ${chat.type === 'paid' ? 'text-[#FFCC00]' : 'text-gray-100'}`}>
+                                            {chat.content}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
                             <div ref={messagesEndRef} />
-                        </div>
-                        <div className="pb-4 text-center">
-                            <span className="text-[11px] text-gray-600 font-medium tracking-tight">멘토 화면에서는 채팅 조회만 가능합니다.</span>
                         </div>
                     </div>
                 )}
@@ -339,7 +349,7 @@ export default function MentorLivePage() {
                 </button>
             </footer>
 
-            {/* 종료 팝업 */}
+            {/* 방송 종료 팝업 */}
             {isExitPopupOpen && (
                 <div className="absolute inset-0 bg-black/80 z-[100] flex items-center justify-center p-6 backdrop-blur-sm">
                     <div className="bg-[#1A1A1A] w-full max-w-sm rounded-[32px] p-8 border border-gray-800 text-center">

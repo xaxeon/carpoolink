@@ -162,7 +162,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         }
 
                         result = JSON.parse(JSON.stringify(room.router.rtpCapabilities));
-                        console.log('Returning RTP Capabilities:', result);
+                        console.log('Returning RTP Capabilities');
                         break;
                     }
                     case 'createWebRtcTransport': {
@@ -336,6 +336,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                 }
 
                 if (typeof callback === 'function') {
+                    console.log('response for callback:', { ok: true, data: result });
                     callback({ ok: true, data: result });
                 } else {
                     sendReply(socket, requestId, result);
