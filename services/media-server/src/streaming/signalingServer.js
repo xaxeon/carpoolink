@@ -160,7 +160,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                             throw new Error('멘토링 세션이 존재하지 않습니다.');
                         }
 
-                        result = room.router.rtpCapabilities;
+                        result = JSON.parse(JSON.stringify(room.router.rtpCapabilities));
                         break;
                     }
                     case 'createWebRtcTransport': {

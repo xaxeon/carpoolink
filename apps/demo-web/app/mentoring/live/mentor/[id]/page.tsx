@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
@@ -49,14 +49,17 @@ export default function MentorLivePage() {
     const { sessionData, isLoading, error, isConnected, peerId, socket, endMentoring } =
         useMentoringSession({ role, userId: userId || 0 });
 
+    const webRtcConfig = useMemo(() => ({
+        socket,
+        mentoringId: sessionData?.mentoringId?.toString() || mentoringId || "",
+        peerId: peerId || "",
+        role: "MENTOR",
+        mentoringType: "GROUP" as const
+    }), [socket, sessionData?.mentoringId, mentoringId, peerId]); // 의존성 관리
+
+    // 메모이제이션된 config 전달
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } =
-        useWebRtcSession({
-            socket,
-            mentoringId: sessionData?.mentoringId?.toString() || mentoringId || "",
-            peerId: peerId || "",
-            role: "MENTOR",
-            mentoringType: "GROUP"
-        });
+        useWebRtcSession(webRtcConfig);
 
     const questionQueue: Question[] = [
         { id: 1, type: "paid", isPrivate: true, author: "김세종", avatar: "👨‍💼", content: '"How do you negotiate equity in a Series B startup without losing the offer?"' },
