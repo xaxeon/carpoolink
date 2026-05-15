@@ -219,20 +219,25 @@ export default function PrivateMentoringPage() {
     <main className="flex flex-col w-full h-full bg-[#F8F9FA] text-[#1A1A1A] relative font-sans overflow-hidden">
       <audio ref={remoteAudioRef} autoPlay />
 
-      <header className="w-full px-5 py-3 flex items-center justify-between shrink-0 bg-white z-30 shadow-sm relative">
-        <button
-          onClick={() => setIsChatMode(false)}
-          className={`p-1 hover:bg-gray-100 rounded-full transition-all duration-300
-            ${isChatMode ? 'opacity-100 cursor-pointer' : 'opacity-0 pointer-events-none'}
-          `}
-        >
-          <img src="/icons/arrow.svg" alt="화살표 아이콘" className="w-5 h-5 text-[#FFCC00]" />
-        </button>
+      <header className="w-full px-5 py-3 flex items-center justify-between shrink-0 bg-white z-30 shadow-sm relative h-[60px]">
+        
+        {/* 1. 왼쪽 영역 (뒤로가기 버튼) - flex-1을 주어 공간 확보 */}
+        <div className="flex-1 flex justify-start z-10">
+          <button
+            onClick={() => setIsChatMode(false)}
+            className={`p-1 hover:bg-gray-100 rounded-full transition-all duration-300
+              ${isChatMode ? 'opacity-100 cursor-pointer' : 'opacity-0 pointer-events-none'}
+            `}
+          >
+            <img src="/icons/arrow.svg" alt="화살표 아이콘" className="w-5 h-5 text-[#FFCC00]" />
+          </button>
+        </div>
 
-        <div className="flex flex-col items-center">
+        {/* 2. 💡 중앙 영역 (닉네임/시간) - 절대 위치(absolute)로 완벽한 중앙 고정 */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none w-max">
           <div className="flex items-center gap-2">
-            <h1 className="text-[17px] font-extrabold tracking-tight">
-              {sessionData ? sessionData.host.nickname : "멘토링 중"}
+            <h1 className="text-[17px] font-extrabold tracking-tight text-[#1A1A1A]">
+              {opponentNickname}
             </h1>
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
           </div>
@@ -241,11 +246,18 @@ export default function PrivateMentoringPage() {
           </span>
         </div>
 
-        {role !== "MENTEE" && (
-          <button onClick={() => setIsEndPopupOpen(true)} className="text-red-500 font-bold text-[15px] p-1">
-            종료
-          </button>
-        )}
+        {/* 3. 오른쪽 영역 (종료 버튼) - flex-1을 주어 왼쪽과 균형을 맞춤 */}
+        <div className="flex-1 flex justify-end z-10">
+          {role !== "MENTEE" ? (
+            <button onClick={() => setIsEndPopupOpen(true)} className="text-red-500 font-bold text-[15px] p-1">
+              종료
+            </button>
+          ) : (
+            /* 멘티일 경우 버튼은 안 보이지만, 레이아웃 공간은 차지하도록 빈 div 유지 (선택사항) */
+            <div className="w-8"></div>
+          )}
+        </div>
+
       </header>
 
       <div className="flex-1 relative overflow-hidden flex flex-col">
