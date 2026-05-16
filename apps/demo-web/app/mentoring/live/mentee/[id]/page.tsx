@@ -127,7 +127,8 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
         mentoringId,
         peerId: peerId || "",
         role,
-        mentoringType: "GROUP"
+        mentoringType: "GROUP",
+        isJoined: isConnected
     });
 
     useEffect(() => {

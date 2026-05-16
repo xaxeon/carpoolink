@@ -8,6 +8,7 @@ interface WebRtcSessionConfig {
     peerId: string;
     role: string;
     mentoringType?: "GROUP" | "ONE_ON_ONE";
+    isJoined: boolean;
     onRemoteStream?: (stream: MediaStream) => void;
     onError?: (error: string) => void;
 }
@@ -436,24 +437,34 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
     useEffect(() => {
         isMountedRef.current = true;
 
+        // 🚨 [핵심] 연결이 끊겼거나 아직 방(joinMentoring)에 입장하기 전이라면 
+        // WebRTC 실행을 중단하고 기존 장치 상태들을 전부 초기화하여 재연결 충돌을 방지합니다.
+        if (!config.isJoined) {
+            setIsReady(false);
+            isInitializingRef.current = false;
+            deviceRef.current = null;
+            sendTransportRef.current = null;
+            recvTransportRef.current = null;
+            producersRef.current.clear();
+            consumersRef.current.clear();
+            setRemoteStreams(new Map());
+            return;
+        }
+
         const init = async () => {
             try {
                 if (isReady || isInitializingRef.current || error) {
                     return;
                 }
 
-                // 1. 기본 연결 상태 확인
-                // 소켓과 peerId가 있을 때만 미디어 서버 연결(mediasoup) 로직 진행
-                if (!config.socket?.connected || !config.peerId) {
+                // 1. 기본 연결 및 방 참여 상태 확인
+                if (!config.socket?.connected || !config.peerId || !config.isJoined) {
                     return;
                 }
 
-                // 멘토링 타입에 따라 스트림 필수 여부 확인
-                // 1:N 멘티는 localStream이 null이어도 초기화를 계속 진행해야 합니다 (수신을 위해)
                 const isOneToOne = config.mentoringType === "ONE_ON_ONE";
                 const needsLocalStream = config.role === "MENTOR" || isOneToOne;
 
-                // 스트림이 꼭 필요한 역할인데 아직 준비가 안 됐다면 대기
                 if (needsLocalStream && !localStream) {
                     console.log("Waiting for local stream...");
                     return;
@@ -461,47 +472,36 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
 
                 isInitializingRef.current = true;
 
-                // 2. Mediasoup 장치 및 트랜스포트 생성 (송/수신 공통)
+                // 2. Mediasoup 장치 및 트랜스포트 생성
                 const device = await initDevice();
                 const sendTransport = await createSendTransport(device);
-
                 await createRecvTransport(device);
 
                 // 3. 송출(Produce) 로직
-                // localStream이 존재할 때만 실행되도록 if문으로 감싸 타입을 확정합니다.
                 if (localStream) {
                     if (config.role === "MENTOR") {
-                        // 멘토는 비디오와 오디오 모두 송출
                         await produceAudio(localStream, sendTransport);
                         await produceVideo(localStream, sendTransport);
                         console.log("✅ Mentor tracks produced");
                     } else if (isOneToOne) {
-                        // 1:1 멘티인 경우 오디오만 송출
                         await produceAudio(localStream, sendTransport);
                         console.log("✅ Mentee audio track produced (1:1)");
                     }
-                } else {
-                    // 1:N 멘티의 경우 localStream이 없으므로 송출 로직을 건너뜁니다.
-                    console.log("ℹ️ 1:N Mentee mode: Skipping production");
                 }
 
+                // 4. 기존 Producer 확인 및 수신
                 const { data: producerIds } = await new Promise<{ data: any[] }>((resolve, reject) => {
-                    config.socket?.emit(
-                        "signal",
-                        {
-                            requestId: `list-producers-${Date.now()}`,
-                            action: "listProducers",
-                            data: {}
-                        },
-                        (response: any) => {
-                            if (response?.ok) resolve(response);
-                            else reject(new Error(response?.error));
-                        }
-                    );
+                    config.socket?.emit("signal", {
+                        requestId: `list-producers-${Date.now()}`,
+                        action: "listProducers",
+                        data: {}
+                    }, (response: any) => {
+                        if (response?.ok) resolve(response);
+                        else reject(new Error(response?.error));
+                    });
                 });
 
                 if (producerIds && producerIds.length > 0) {
-                    console.log("📥 Found existing producers:", producerIds);
                     for (const p of producerIds) {
                         const pid = typeof p === 'string' ? p : p.producerId;
                         const pkind = typeof p === 'string' ? undefined : p.kind;
@@ -522,25 +522,17 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
             }
         };
 
-        const retryInit = () => {
-            void init();
-        };
-
-        if (config.socket) {
-            config.socket.on("connect", retryInit);
-            config.socket.on("reconnect", retryInit);
-        }
+        // ❌ 기존에 소켓 재연결 시 강제로 init()을 호출하던 
+        // socket.on("connect", retryInit) 부분은 완전히 삭제합니다. 
+        // 이제 isJoined 상태 변경에 의해 React가 자연스럽게 순서를 보장하며 재실행합니다.
 
         init();
 
         return () => {
             isMountedRef.current = false;
-            if (config.socket) {
-                config.socket.off("connect", retryInit);
-                config.socket.off("reconnect", retryInit);
-            }
         };
-    }, [config.socket, config.peerId, config.role, isReady, initLocalStream, initDevice, createSendTransport, createRecvTransport, produceAudio, produceVideo, localStream]);
+        // 💡 의존성 배열에 config.isJoined 필수 추가
+    }, [config.socket, config.peerId, config.isJoined, config.role, isReady, initLocalStream, initDevice, createSendTransport, createRecvTransport, produceAudio, produceVideo, localStream]);
 
     // 카메라/마이크 토글
     const setCameraOn = useCallback(

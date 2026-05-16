@@ -84,7 +84,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         mentoringId: sessionData?.mentoringId?.toString() || mentoringId,
         peerId: peerId || "",
         role: "MENTOR",
-        mentoringType: "GROUP" as const
+        mentoringType: "GROUP" as const,
+        isJoined: isConnected
     }), [socket, sessionData?.mentoringId, mentoringId, peerId]);
 
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } = useWebRtcSession(webRtcConfig);

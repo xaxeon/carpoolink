@@ -54,7 +54,8 @@ export default function PrivateMentoringPage() {
       mentoringId: sessionData?.mentoringId?.toString() || "",
       peerId: peerId || "",
       role,
-      mentoringType: "ONE_ON_ONE",
+      mentoringType: "ONE_ON_ONE", // 💡 1:1 멘토링 타입 명시
+      isJoined: isConnected, // 💡 멘토링 세션에 실제로 연결된 상태를 WebRTC 훅에 전달
     });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -111,7 +112,7 @@ export default function PrivateMentoringPage() {
       console.log("👋 상대방 입장 이벤트 수신:", data);
 
       const incomingNickname = data.nickname || data.userName;
-      
+
       // 내 닉네임과 다른 사람(상대방)이 들어왔을 때만 업데이트
       if (incomingNickname && incomingNickname !== userName) {
         setOpponentNickname(incomingNickname);
@@ -122,7 +123,7 @@ export default function PrivateMentoringPage() {
     newChatSocket.on("message_history", (historyData: any[]) => {
       const mapped = historyData.map(m => {
         const isMe = String(m.userId) === String(userId);
-        
+
         // 내 메시지가 아닌데 이름 정보가 있다면 업데이트!
         if (!isMe && (m.user?.nickname || m.userName)) {
           setOpponentNickname(m.user?.nickname || m.userName);
@@ -134,7 +135,7 @@ export default function PrivateMentoringPage() {
           text: m.content,
         };
       }) as ChatMessage[];
-      
+
       setMessages(mapped);
     });
 
@@ -200,7 +201,7 @@ export default function PrivateMentoringPage() {
     const timerInterval = setInterval(() => {
       const nowMs = Date.now(); // 내 컴퓨터의 현재 시간
       const diffInSeconds = Math.floor((nowMs - startTimeMs) / 1000);
-      
+
       // 멘티가 약간 일찍 들어왔을 때 타이머가 음수로 가는 것 방지
       setElapsedTime(diffInSeconds > 0 ? diffInSeconds : 0);
     }, 1000);
@@ -270,7 +271,7 @@ export default function PrivateMentoringPage() {
       <audio ref={remoteAudioRef} autoPlay />
 
       <header className="w-full px-5 py-3 flex items-center justify-between shrink-0 bg-white z-30 shadow-sm relative h-[60px]">
-        
+
         {/* 1. 왼쪽 영역 (뒤로가기 버튼) - flex-1을 주어 공간 확보 */}
         <div className="flex-1 flex justify-start z-10">
           <button
