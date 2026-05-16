@@ -80,10 +80,10 @@ export default function PrivateMentoringPage() {
     if (!mentoringIdStr || !userId) return;
 
     // 배포 환경이면 Nginx 라우팅, 로컬이면 4001번 포트로 연결
-    const CHAT_SERVER_URL = process.env.NEXT_PUBLIC_CHAT_API_URL || "http://localhost:4001";
+    const SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4001";
     const socketPath = "/chat/socket.io";
 
-    const newChatSocket = io(CHAT_SERVER_URL, {
+    const newChatSocket = io(SERVER_URL, {
       path: socketPath,
       withCredentials: true,
       transports: ["websocket", "polling"],
