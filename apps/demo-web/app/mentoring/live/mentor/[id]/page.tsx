@@ -8,6 +8,8 @@ import { PhoneOff, Users, Volume2, Settings, Mic, MicOff, Video, VideoOff, Messa
 
 import { useMentoringSession } from "@/hooks/useMentoringSession";
 import { useWebRtcSession } from "@/hooks/useWebRtcSession";
+// core-api 호출용 클라이언트
+import apiClient from "@/lib/apiClient";
 
 interface Question {
     id: number;
@@ -175,6 +177,27 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         setIsReading(false);
     };
 
+    const acknowledgeQuestion = async (questionId: number) => {
+        try {
+            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`);
+            setIsReading(true);
+        } catch (err: any) {
+            console.error('질문 확인 실패', err);
+            alert(err?.response?.data?.message || '질문 확인에 실패했습니다.');
+        }
+    };
+
+    const completeQuestion = async (questionId: number) => {
+        try {
+            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
+            setIsReading(false);
+            handleNextQuestion();
+        } catch (err: any) {
+            console.error('질문 완료 처리 실패', err);
+            alert(err?.response?.data?.message || '질문 완료 처리에 실패했습니다.');
+        }
+    };
+
     const handleConfirmExit = async () => {
         try {
             if (endMentoring) await endMentoring();
@@ -250,11 +273,11 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             <p className="font-extrabold text-[16px] leading-snug">{currentQuestion.content}</p>
                         </div>
                         <div className="flex flex-col gap-2 shrink-0 justify-center">
-                            <button onClick={() => setIsReading(true)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
+                            <button onClick={() => acknowledgeQuestion(currentQuestion.id)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
                                 <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
                                 {isReading ? '읽는 중...' : '질문 읽기'}
                             </button>
-                            <button onClick={handleNextQuestion} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0]">답변 완료</button>
+                            <button onClick={() => completeQuestion(currentQuestion.id)} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0]">답변 완료</button>
                         </div>
                     </div>
 
@@ -277,9 +300,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         <div className="relative w-full flex items-center justify-between px-3 pb-3 gap-2 z-10">
                             <div className="flex gap-2">
                                 <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">다음 질문</button>
-                                <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
+                                <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
                                 <button
-                                    onClick={() => setIsReading(true)}
+                                    onClick={() => acknowledgeQuestion(currentQuestion.id)}
                                     className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform"
                                 >
                                     질문 다시 읽기

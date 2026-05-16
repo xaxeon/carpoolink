@@ -261,9 +261,21 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                 content: `[유료] ${chatInput}`
             };
 
-            chatSocket.emit("send_message", payload);
-            setChatInput("");
-            setIsPaidMode(false);
+            // 유료 질문은 core-api에 등록하여 잔액 차감 및 실시간 이벤트 전파를 수행합니다.
+            (async () => {
+                try {
+                    await apiClient.post(`/api/mentorings/${mentoringId}/questions`, {
+                        content: chatInput,
+                        isPaid: true,
+                    });
+                    // 등록 성공하면 입력 초기화
+                    setChatInput("");
+                    setIsPaidMode(false);
+                } catch (err: any) {
+                    console.error('유료 질문 등록 실패', err);
+                    alert(err?.response?.data?.message || '유료 질문 전송에 실패했습니다.');
+                }
+            })();
         }
     };
 
