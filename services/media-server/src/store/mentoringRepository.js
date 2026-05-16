@@ -19,7 +19,9 @@ function normalizeMentoring(record) {
         status: record.status,
         startedAt: record.startedAt ? new Date(record.startedAt).toISOString() : null,
         endedAt: record.endedAt ? new Date(record.endedAt).toISOString() : null,
-        userId: Number(record.userId)
+        userId: Number(record.userId),
+
+        nickname: record.hostMentor?.nickname || "호스트"
     };
 }
 
@@ -230,6 +232,13 @@ class PrismaMentoringRepository {
         const found = await this.prisma.mentoring.findUnique({
             where: {
                 mentoringId: BigInt(mentoringId)
+            },
+            include: {
+                hostMentor: {
+                    select: {
+                        nickname: true
+                    }
+                }
             }
         });
 

@@ -205,7 +205,7 @@ export async function handleConnection(socket, io) {
             const userCount = getSocketRoomUserCount(io, mentoringKey);
             io.to(roomName).emit('user_joined', {
                 userId: userKey,
-                userName,
+                nickname: userName,
                 userCount,
                 timestamp: new Date(),
             });
