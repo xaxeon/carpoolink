@@ -96,61 +96,73 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                 let result;
                 switch (action) {
                     case 'joinMentoring': {
-                        const mentoringId = Number(data.mentoringId);
-                        const role = data.role ?? 'MENTEE';
-                        const peerId = data.userId ?? socket.id;
+                        console.log('joinMentoring called');
 
-                        if (!Number.isFinite(mentoringId)) {
-                            throw new Error('유효하지 않은 멘토링 ID입니다.');
-                        }
+                        try {
+                            const mentoringId = Number(data.mentoringId);
+                            const role = data.role ?? 'MENTEE';
+                            const peerId = data.userId ?? socket.id;
 
-                        const mentoring = await mentoringRepository.getMentoringById(mentoringId);
-
-                        if (!mentoring || mentoring.status !== 'ON_AIR') {
-                            throw new Error('멘토링 세션이 진행 중이 아닙니다.');
-                        }
-
-                        const userId = resolveUserIdFromSocket(socket, data);
-
-                        if (role === 'MENTOR') {
-                            if (userId === null) {
-                                throw new Error('멘토 권한이 필요합니다.');
+                            if (!Number.isFinite(mentoringId)) {
+                                throw new Error('유효하지 않은 멘토링 ID입니다.');
                             }
 
-                            await mentoringRepository.assertMentorUser(userId);
+                            const mentoring = await mentoringRepository.getMentoringById(mentoringId);
 
-                            if (Number(mentoring.userId) !== Number(userId)) {
-                                throw new Error('멘토링 세션에 참여할 권한이 없습니다.');
+                            if (!mentoring || mentoring.status !== 'ON_AIR') {
+                                throw new Error('멘토링 세션이 진행 중이 아닙니다.');
                             }
-                        }
 
-                        const joinResult = await mediaOrchestrator.addPeer({
-                            mentoringId,
-                            peerId,
-                            role,
-                            socket,
-                            isGroup: mentoring.isGroup,
-                            userId,
-                        });
+                            const userId = resolveUserIdFromSocket(socket, data);
 
-                        result = {
-                            peerId,
-                            ...joinResult,
-                            audioPipeline: audioPipeline.getRoomSnapshot(mentoringId)
-                        };
+                            if (role === 'MENTOR') {
+                                if (userId === null) {
+                                    throw new Error('멘토 권한이 필요합니다.');
+                                }
 
-                        socketContext.set(socket.id, { mentoringId, peerId, role, userId });
+                                await mentoringRepository.assertMentorUser(userId);
 
-                        notifyPeers(
-                            mentoringId,
-                            'peer-joined',
-                            {
+                                if (Number(mentoring.userId) !== Number(userId)) {
+                                    throw new Error('멘토링 세션에 참여할 권한이 없습니다.');
+                                }
+                            }
+
+                            const joinResult = await mediaOrchestrator.addPeer({
+                                mentoringId,
                                 peerId,
-                                role
-                            },
-                            peerId
-                        );
-                        break;
+                                role,
+                                socket,
+                                isGroup: mentoring.isGroup,
+                                userId,
+                            });
+
+                            result = {
+                                peerId,
+                                ...joinResult,
+                                audioPipeline: audioPipeline.getRoomSnapshot(mentoringId)
+                            };
+
+                            socketContext.set(socket.id, { mentoringId, peerId, role, userId });
+
+                            notifyPeers(
+                                mentoringId,
+                                'peer-joined',
+                                {
+                                    peerId,
+                                    role
+                                },
+                                peerId
+                            );
+                            console.log('joinMentoring successful');
+                            break;
+                        } catch (error) {
+                            console.error('joinMentoring error:', error);
+                            if (typeof callback === 'function') {
+                                callback({ ok: false, error: error.message });
+                                return;
+                            }
+                            break;
+                        }
                     }
                     case 'getRtpCapabilities': {
                         console.log('getRtpCapabilities called');
