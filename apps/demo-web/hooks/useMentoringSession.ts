@@ -12,6 +12,7 @@ interface MentoringSessionData {
         userId: number;
         nickname: string;
     };
+    startedAt?: string | null;
 }
 
 interface UseMentoringSessionOptions {
@@ -58,11 +59,11 @@ export function useMentoringSession(options: UseMentoringSessionOptions) {
                     title: mentoringInfo?.title || "멘토링 세션",
                     status: mentoringInfo?.status || "ON_AIR",
                     participantCount: data?.media?.peers?.length || 0,
-                    
                     host: { 
                         userId: mentoringInfo?.userId || 0, 
                         nickname: mentoringInfo?.nickname || "호스트" 
                     },
+                    startedAt: mentoringInfo?.startedAt || null,
                 });
                 // 참여자 수 상태 업데이트
                 setParticipantCount(data?.media?.peers?.length || 0);

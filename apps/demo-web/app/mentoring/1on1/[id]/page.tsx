@@ -189,12 +189,24 @@ export default function PrivateMentoringPage() {
     }
   }, [isSpeakerOn]);
 
+  // ✅ [새로운 타이머 로직] 서버 시간에 맞춰 동기화
   useEffect(() => {
+    // DB에 시작 시간이 기록되어 있지 않다면 타이머를 돌리지 않음
+    if (!sessionData?.startedAt) return;
+
+    // 방이 공식적으로 시작된 시간 (절대 시간)
+    const startTimeMs = new Date(sessionData.startedAt).getTime();
+
     const timerInterval = setInterval(() => {
-      setElapsedTime((prevTime) => prevTime + 1);
+      const nowMs = Date.now(); // 내 컴퓨터의 현재 시간
+      const diffInSeconds = Math.floor((nowMs - startTimeMs) / 1000);
+      
+      // 멘티가 약간 일찍 들어왔을 때 타이머가 음수로 가는 것 방지
+      setElapsedTime(diffInSeconds > 0 ? diffInSeconds : 0);
     }, 1000);
+
     return () => clearInterval(timerInterval);
-  }, []);
+  }, [sessionData?.startedAt]);
 
   useEffect(() => {
     if (!socket) return;
