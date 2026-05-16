@@ -60,7 +60,11 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
             methods: ['GET', 'POST'],
             credentials: true
         },
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        connectionStateRecovery: {
+            maxDisconnectionDuration: 2 * 60 * 1000, // 2분
+            skipMiddlewares: true
+        }
     });
 
     const socketContext = new Map();
