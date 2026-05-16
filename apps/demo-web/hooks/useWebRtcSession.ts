@@ -120,10 +120,19 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
             deviceRef.current = device;
             return device;
         } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : "Device 초기화 실패";
-            console.error("❌ Device init error:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
+            const error = err as any;
+
+            console.error(`[❌ Device init error 발생!`);
+
+            // 직렬화하지 않고 객체 날것 그대로 콘솔에 출력 (화살표를 눌러 내부를 볼 수 있음)
+            console.error("1. Raw Error Object:", error);
+
+            // 프로토타입 체인을 무시하고 명시적으로 속성 추출
+            console.error("2. Error Details -> Name:", error?.name, " | Message:", error?.message);
+            console.error("3. Error Stack:", error?.stack);
+
             if (isMountedRef.current) {
-                setError(errorMsg);
+                setError(error?.message || "Device 초기화 실패");
             }
             throw err;
         }
