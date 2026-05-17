@@ -1,7 +1,5 @@
-const DEFAULT_CHAT_SERVICE_URL = 'http://localhost:4001';
-
 function getChatServiceUrl() {
-    return process.env.CHAT_SERVICE_URL || DEFAULT_CHAT_SERVICE_URL;
+    return process.env.CHAT_SERVICE_URL || 'http://localhost:4001';
 }
 
 export async function emitQuestionEvent({ mentoringId, event, payload }) {
@@ -14,7 +12,7 @@ export async function emitQuestionEvent({ mentoringId, event, payload }) {
                 'content-type': 'application/json',
             },
             body: JSON.stringify({
-                mentoringId: mentoringId.toString(),
+                mentoringId: Number(mentoringId),
                 event,
                 payload,
             }),

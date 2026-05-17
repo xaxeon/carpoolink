@@ -39,6 +39,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
     const consumersRef = useRef<Map<string, MediaSoupTypes.Consumer>>(new Map());
     const isMountedRef = useRef(true);
     const isInitializingRef = useRef(false);
+    const isStreamFetchingRef = useRef(false);
 
     // 1. 로컬 미디어 스트림 획득
     const initLocalStream = useCallback(async () => {
@@ -51,24 +52,35 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
             return null;
         }
 
+        if (isStreamFetchingRef.current || localStream) return null;
+
         try {
+            isStreamFetchingRef.current = true;
+
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: needsVideo ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
                 audio: needsAudio,
             });
 
-            if (isMountedRef.current) {
-                setLocalStream(stream);
-                // 트랙 상태 초기화
-                stream.getVideoTracks().forEach((track) => {
-                    track.enabled = isCameraOn;
-                    console.log("📹 Video track enabled:", track.enabled);
+            if (!isMountedRef.current) {
+                stream.getTracks().forEach((track) => {
+                    track.stop();
+                    console.log(`🛑 Unmounted mid-flight. Cleaned up track: ${track.kind}`);
                 });
-                stream.getAudioTracks().forEach((track) => {
-                    track.enabled = isMicOn;
-                    console.log("🎤 Audio track enabled:", track.enabled);
-                });
+                return null;
             }
+
+            setLocalStream(stream);
+
+            // 트랙 상태 초기화
+            stream.getVideoTracks().forEach((track) => {
+                track.enabled = isCameraOn;
+                console.log("📹 Video track enabled:", track.enabled);
+            });
+            stream.getAudioTracks().forEach((track) => {
+                track.enabled = isMicOn;
+                console.log("🎤 Audio track enabled:", track.enabled);
+            });
 
             return stream;
         } catch (err) {
@@ -423,7 +435,7 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
     useEffect(() => {
         if (isGroupMentee) return;
 
-        if (!localStream && !isInitializingRef.current) {
+        if (!localStream && !isInitializingRef.current && !isStreamFetchingRef.current) {
             console.log("Initializing WebRTC session...");
             initLocalStream();
         }

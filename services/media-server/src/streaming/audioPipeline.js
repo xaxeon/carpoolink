@@ -88,8 +88,6 @@ export class AudioPipelineManager {
             menteeAudioProducerId: room.menteeAudioProducerId,
             ttsProducerIds: [...room.ttsProducerIds]
         };
-
-        console.debug('[audio-pipeline] composite plan updated', compositePlan);
     }
 
     // mentoringId에 해당하는 방의 현재 오디오 스트림 상태를 스냅샷 형태로 반환하는 메서드

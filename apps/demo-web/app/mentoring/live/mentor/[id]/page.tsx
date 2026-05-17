@@ -76,6 +76,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [isExitPopupOpen, setIsExitPopupOpen] = useState(false);
     const [currentIdx, setCurrentIdx] = useState(0);
     const [isReading, setIsReading] = useState(false);
+    const [questions, setQuestions] = useState<Question[]>([]);
+    const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
 
     // 💡 이제 이 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
     const mentoringOptions = useMemo(() => ({ role, userId }), [role, userId]);
@@ -92,12 +94,36 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } = useWebRtcSession(webRtcConfig);
 
-    // 질문 큐 데이터
-    const questionQueue: Question[] = [
-        { id: 1, type: "paid", isPrivate: true, author: "김세종", avatar: "👨‍💼", content: '"How do you negotiate equity in a Series B startup without losing the offer?"' },
-        { id: 2, type: "free", isPrivate: false, author: "이유진", avatar: "👩‍💼", content: '"Can you share some tips on building a tech portfolio from scratch?"' }
-    ];
-    const currentQuestion = questionQueue[currentIdx];
+    const currentQuestion = questions[currentIdx];
+
+    // [질문 목록 로드]
+    useEffect(() => {
+        const fetchQuestions = async () => {
+            if (!mentoringId) return;
+            setIsLoadingQuestions(true);
+            try {
+                const response = await apiClient.get(`/api/mentorings/${mentoringId}/questions`);
+                if (response.data?.questions) {
+                    // API 응답에서 필요한 필드만 추출하여 Question 타입으로 변환
+                    const mappedQuestions = response.data.questions.map((q: any) => ({
+                        id: q.questionId,
+                        type: q.paid ? "paid" : "free",
+                        isPrivate: q.status === "PRIVATE",
+                        author: q.user?.nickname || "익명멘티",
+                        avatar: "👤",
+                        content: q.content,
+                    }));
+                    setQuestions(mappedQuestions);
+                }
+            } catch (err: any) {
+                console.error('질문 목록 로드 실패', err);
+            } finally {
+                setIsLoadingQuestions(false);
+            }
+        };
+
+        fetchQuestions();
+    }, [mentoringId]);
 
     // [채팅 소켓 설정]
     useEffect(() => {
@@ -173,7 +199,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     }, [chats, isChatOpen]);
 
     const handleNextQuestion = () => {
-        setCurrentIdx((prev) => (prev + 1) % questionQueue.length);
+        if (questions.length === 0) return;
+        setCurrentIdx((prev) => (prev + 1) % questions.length);
         setIsReading(false);
     };
 
@@ -255,33 +282,45 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             </header>
 
             <div className="flex-1 flex flex-col px-4 overflow-hidden relative">
+                {/* 상단 영역: 질문 카드 + 비디오 화면 */}
                 <div className={`flex flex-col transition-all duration-500 ${!isChatOpen ? 'flex-1 justify-center' : 'justify-start pt-2'}`}>
-                    {/* 질문 카드 */}
-                    <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 ${currentQuestion.type === 'paid' ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
-                        <div className="flex flex-col gap-3 flex-1">
-                            <div className="flex items-center justify-between w-full">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">{currentQuestion.avatar}</div>
-                                    <span className="font-bold text-[14px]">{currentQuestion.author}</span>
-                                </div>
-                                {currentQuestion.isPrivate && (
-                                    <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
-                                        <Lock className="w-3 h-3" strokeWidth={3} /> 비공개 질문
-                                    </div>
-                                )}
-                            </div>
-                            <p className="font-extrabold text-[16px] leading-snug">{currentQuestion.content}</p>
-                        </div>
-                        <div className="flex flex-col gap-2 shrink-0 justify-center">
-                            <button onClick={() => acknowledgeQuestion(currentQuestion.id)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
-                                <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
-                                {isReading ? '읽는 중...' : '질문 읽기'}
-                            </button>
-                            <button onClick={() => completeQuestion(currentQuestion.id)} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0]">답변 완료</button>
-                        </div>
-                    </div>
 
-                    {/* 비디오 화면 */}
+                    {/* [1] 질문 카드 영역 */}
+                    {isLoadingQuestions ? (
+                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-white flex items-center justify-center h-24">
+                            <div className="w-6 h-6 border-2 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin"></div>
+                        </div>
+                    ) : questions.length === 0 ? (
+                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-gray-400 flex items-center justify-center h-24">
+                            질문이 없습니다.
+                        </div>
+                    ) : currentQuestion ? (
+                        <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 ${currentQuestion.type === 'paid' ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
+                            <div className="flex flex-col gap-3 flex-1">
+                                <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">{currentQuestion.avatar}</div>
+                                        <span className="font-bold text-[14px]">{currentQuestion.author}</span>
+                                    </div>
+                                    {currentQuestion.isPrivate && (
+                                        <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
+                                            <Lock className="w-3 h-3" strokeWidth={3} /> 비공개 질문
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="font-extrabold text-[16px] leading-snug">{currentQuestion.content}</p>
+                            </div>
+                            <div className="flex flex-col gap-2 shrink-0 justify-center">
+                                <button onClick={() => acknowledgeQuestion(currentQuestion.id)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
+                                    <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
+                                    {isReading ? '읽는 중...' : '질문 읽기'}
+                                </button>
+                                <button onClick={() => completeQuestion(currentQuestion.id)} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0]">답변 완료</button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* [2] 비디오 화면 영역 (조건부 렌더링 {currentQuestion &&} 제거) */}
                     <div className="w-full aspect-[16/9] bg-[#1A1A1A] rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-2xl border border-gray-800 shrink-0">
                         {isCameraOn ? (
                             <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline muted />
@@ -292,45 +331,60 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             </div>
                         )}
                         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"></div>
+
+                        {/* 비디오 내부 상단 뱃지 (질문이 있을 때만 노출) */}
                         <div className="relative w-full flex justify-center pt-4 z-10">
-                            <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
-                                {currentQuestion.isPrivate ? "비공개 질문 답변중" : "공개 질문 답변중"}
-                            </div>
+                            {currentQuestion ? (
+                                <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
+                                    {currentQuestion.isPrivate ? "비공개 질문 답변중" : "공개 질문 답변중"}
+                                </div>
+                            ) : (
+                                <div className="text-[11px] font-bold px-4 py-1.5 rounded-full bg-gray-800 text-gray-400">
+                                    대기 중
+                                </div>
+                            )}
                         </div>
+
+                        {/* 비디오 내부 하단 컨트롤러 (질문이 있을 때만 버튼 활성화 혹은 노출) */}
                         <div className="relative w-full flex items-center justify-between px-3 pb-3 gap-2 z-10">
                             <div className="flex gap-2">
-                                <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">다음 질문</button>
-                                <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
-                                <button
-                                    onClick={() => acknowledgeQuestion(currentQuestion.id)}
-                                    className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform"
-                                >
-                                    질문 다시 읽기
-                                </button>
+                                {currentQuestion && (
+                                    <>
+                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">다음 질문</button>
+                                        <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
+                                        <button onClick={() => acknowledgeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 읽기</button>
+                                    </>
+                                )}
                             </div>
                             <button className="bg-black/50 backdrop-blur-md p-2 rounded-full text-white"><Settings className="w-4 h-4" /></button>
                         </div>
                     </div>
                 </div>
 
-                {/* 채팅 목록 */}
+                {/* [3] 채팅 영역 (isChatOpen이 true일 때만 렌더링되도록 조건부 처리 추가) */}
                 {isChatOpen && (
                     <div className="flex-1 flex flex-col mt-4 animate-in fade-in slide-in-from-bottom-8 duration-500 overflow-hidden">
                         <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pb-6 pr-2">
-                            {chats.map((chat) => (
-                                <div key={chat.id} className="flex gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-gray-800 border-2 border-[#FFCC00] shrink-0" />
-                                    <div className="flex flex-col items-start">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
-                                            {chat.type === 'paid' && <span className="bg-[#FFCC00] text-[#1A1A1A] text-[10px] font-extrabold px-1.5 py-0.5 rounded">유료 질문</span>}
-                                        </div>
-                                        <p className={`text-[15px] leading-relaxed break-all ${chat.type === 'paid' ? 'text-[#FFCC00]' : 'text-gray-100'}`}>
-                                            {chat.content}
-                                        </p>
-                                    </div>
+                            {chats.length === 0 ? (
+                                <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                                    아직 대화 내용이 없습니다.
                                 </div>
-                            ))}
+                            ) : (
+                                chats.map((chat) => (
+                                    <div key={chat.id} className="flex gap-3">
+                                        <div className="w-9 h-9 rounded-full bg-gray-800 border-2 border-[#FFCC00] shrink-0" />
+                                        <div className="flex flex-col items-start">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
+                                                {chat.type === 'paid' && <span className="bg-[#FFCC00] text-[#1A1A1A] text-[10px] font-extrabold px-1.5 py-0.5 rounded">유료 질문</span>}
+                                            </div>
+                                            <p className={`text-[15px] leading-relaxed break-all ${chat.type === 'paid' ? 'text-[#FFCC00]' : 'text-gray-100'}`}>
+                                                {chat.content}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                             <div ref={messagesEndRef} />
                         </div>
                     </div>

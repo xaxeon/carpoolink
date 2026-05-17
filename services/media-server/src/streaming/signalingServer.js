@@ -91,7 +91,6 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
     io.on('connection', (socket) => {
         socket.on('signal', async (message = {}, callback) => {
             const { requestId, action, data = {} } = message;
-            console.log(`Received signaling message: ${action}`);
             try {
                 let result;
                 switch (action) {
