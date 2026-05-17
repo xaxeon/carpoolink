@@ -41,6 +41,11 @@ function getDefaultEmbeddingModel() {
     return process.env.QUESTION_CLUSTERING_EMBEDDING_MODEL || 'distiluse';
 }
 
+function getModelApiUrl() {
+    const rawValue = process.env.QUESTION_MODEL_API_URL;
+    return rawValue && rawValue.trim() ? rawValue.trim().replace(/\/+$/, '') : null;
+}
+
 function runPythonJson(scriptPayload) {
     return new Promise((resolve, reject) => {
         const child = spawn(getPythonExecutable(), [getScriptPath()], {
@@ -109,10 +114,37 @@ export async function clusterQuestions({
     similarityMode = getDefaultSimilarityMode(),
     embeddingModel = getDefaultEmbeddingModel(),
 }) {
-    return runPythonJson({
+    const scriptPayload = {
         questions,
         threshold,
         similarity_mode: similarityMode,
         embedding_model: embeddingModel,
+    };
+
+    const modelApiUrl = getModelApiUrl();
+    if (modelApiUrl) {
+        return clusterQuestionsViaModelApi(scriptPayload, modelApiUrl);
+    }
+
+    return runPythonJson(scriptPayload);
+}
+
+async function clusterQuestionsViaModelApi(scriptPayload, modelApiUrl) {
+    const response = await fetch(`${modelApiUrl}/question-clustering/cluster`, {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json',
+        },
+        body: JSON.stringify(scriptPayload),
+        signal: AbortSignal.timeout(getExecutionTimeoutMs()),
     });
+
+    if (!response.ok) {
+        const responseBody = await response.text();
+        throw new Error(
+            `Question clustering model API failed with status ${response.status}: ${responseBody}`,
+        );
+    }
+
+    return response.json();
 }

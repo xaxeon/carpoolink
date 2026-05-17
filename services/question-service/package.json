@@ -7,6 +7,8 @@
     "scripts": {
         "start": "node src/server.js",
         "dev": "nodemon src/server.js",
+        "dev:model": "..\\..\\..\\venv\\Scripts\\python.exe -X utf8 -m fastapi dev python_api\\app.py --host 127.0.0.1 --port 8000",
+        "start:model": "python -X utf8 -m fastapi run python_api\\app.py --host 0.0.0.0 --port 8000",
         "test": "node --test \"src/**/*.test.js\""
     },
     "dependencies": {

@@ -59,11 +59,45 @@ function getExecutionTimeoutMs() {
     return Number.isFinite(parsedValue) ? parsedValue : 30000;
 }
 
+function getModelApiUrl() {
+    const rawValue = process.env.QUESTION_MODEL_API_URL;
+    return rawValue && rawValue.trim() ? rawValue.trim().replace(/\/+$/, '') : null;
+}
+
 function shouldForceKcElectraOnRuleQuestion() {
     return process.env.QUESTION_ALWAYS_USE_KC_ELECTRA_ON_RULE_QUESTION === 'true';
 }
 
 export async function predictQuestion(text) {
+    const modelApiUrl = getModelApiUrl();
+    if (modelApiUrl) {
+        return predictQuestionViaModelApi(text, modelApiUrl);
+    }
+
+    return predictQuestionViaPythonCli(text);
+}
+
+async function predictQuestionViaModelApi(text, modelApiUrl) {
+    const response = await fetch(`${modelApiUrl}/question-detection/predict`, {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(getExecutionTimeoutMs()),
+    });
+
+    if (!response.ok) {
+        const responseBody = await response.text();
+        throw new Error(
+            `Question model API failed with status ${response.status}: ${responseBody}`,
+        );
+    }
+
+    return response.json();
+}
+
+async function predictQuestionViaPythonCli(text) {
     const command = getPythonExecutable();
     const args = [
         getScriptPath(),
