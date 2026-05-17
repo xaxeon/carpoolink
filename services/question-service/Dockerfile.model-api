@@ -1,0 +1,24 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/services/question-service/scripts/question-detection:/app/services/question-service/scripts/question-clustering \
+    QUESTION_TFIDF_ARTIFACT_DIR=/app/services/model/question_detection/tfidf_lr_rule_filter_off \
+    QUESTION_KC_ELECTRA_DIR=/app/services/model/question_detection/kc_electra_question_detector
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/question-service/requirements.txt /tmp/question-service-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/question-service-requirements.txt
+
+COPY services/question-service/scripts /app/services/question-service/scripts
+COPY services/question-service/python_api /app/services/question-service/python_api
+
+WORKDIR /app/services/question-service
+
+EXPOSE 8000
+
+CMD ["python", "-X", "utf8", "-m", "fastapi", "run", "python_api/app.py", "--host", "0.0.0.0", "--port", "8000"]

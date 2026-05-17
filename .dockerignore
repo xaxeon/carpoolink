@@ -3,3 +3,6 @@
 !package-lock.json
 !services/**
 !packages/**
+services/**/node_modules/
+services/model/question_detection.zip
+services/question-service/outputs/

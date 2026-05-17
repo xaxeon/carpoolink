@@ -20,6 +20,7 @@
     "dev:media": "npm run dev -w services/media-server",
     "dev:chat": "npm run dev -w services/chat-service",
     "dev:question": "npm run dev -w services/question-service",
+    "dev:question:model": "npm run dev:model -w services/question-service",
     "dev:stt": "npm run dev -w services/stt-service",
     "benchmark:question": "..\\venv\\Scripts\\python.exe services/question-service/scripts/question-detection/benchmark_question_detection.py",
     "test": "npm run test -ws --if-present"

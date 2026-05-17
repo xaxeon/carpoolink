@@ -25,8 +25,8 @@ services:
   # Core API (Port 4000)
   core-api:
     build:
-      context: ./services/core-api
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: services/core-api/Dockerfile
     container_name: carpoolink-core-api
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -39,8 +39,8 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ../../services/core-api:/app
-      - /app/node_modules
+      - ../../services/core-api:/app/services/core-api
+      - /app/services/core-api/node_modules
     networks:
       - carpoolink-network
     command: npm run dev
@@ -48,8 +48,8 @@ services:
   # Chat Service (Port 4001)
   chat-service:
     build:
-      context: ./services/chat-service
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: services/chat-service/Dockerfile
     container_name: carpoolink-chat-service
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -63,8 +63,8 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ../../services/chat-service:/app
-      - /app/node_modules
+      - ../../services/chat-service:/app/services/chat-service
+      - /app/services/chat-service/node_modules
     networks:
       - carpoolink-network
     command: npm run dev
@@ -72,8 +72,8 @@ services:
   # Media Server (Port 4002)
   media-server:
     build:
-      context: ./services/media-server
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: services/media-server/Dockerfile
     container_name: carpoolink-media-server
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -87,8 +87,8 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ../../services/media-server:/app
-      - /app/node_modules
+      - ../../services/media-server:/app/services/media-server
+      - /app/services/media-server/node_modules
     networks:
       - carpoolink-network
     command: npm run dev
@@ -96,27 +96,58 @@ services:
   # Question Service (Port 4003)
   question-service:
     build:
-      context: ./services/question-service
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: services/question-service/Dockerfile
     container_name: carpoolink-question-service
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       QUESTION_SERVICE_PORT: 4003
+      QUESTION_MODEL_API_URL: http://question-model-api:8000
       TZ: Asia/Seoul
     ports:
-      - "4003:4003"
+      - "${QUESTION_SERVICE_HOST_PORT:-4003}:4003"
+    depends_on:
+      question-model-api:
+        condition: service_healthy
     volumes:
-      - ../../services/question-service:/app
-      - /app/node_modules
+      - ../../services/question-service:/app/services/question-service
+      - /app/services/question-service/node_modules
     networks:
       - carpoolink-network
     command: npm run dev
 
+  # Question Model API (Port 8000)
+  question-model-api:
+    build:
+      context: ../..
+      dockerfile: services/question-service/Dockerfile.model-api
+    container_name: carpoolink-question-model-api
+    environment:
+      QUESTION_PRELOAD_KC_ELECTRA: ${QUESTION_PRELOAD_KC_ELECTRA:-true}
+      QUESTION_CLUSTERING_THRESHOLD: ${QUESTION_CLUSTERING_THRESHOLD:-0.72}
+      QUESTION_CLUSTERING_SIMILARITY_MODE: ${QUESTION_CLUSTERING_SIMILARITY_MODE:-hybrid}
+      QUESTION_CLUSTERING_EMBEDDING_MODEL: ${QUESTION_CLUSTERING_EMBEDDING_MODEL:-distiluse}
+      TZ: Asia/Seoul
+    ports:
+      - "${QUESTION_MODEL_API_HOST_PORT:-8000}:8000"
+    volumes:
+      - ../../services/question-service/python_api:/app/services/question-service/python_api
+      - ../../services/question-service/scripts:/app/services/question-service/scripts
+      - ../../services/model/question_detection:/app/services/model/question_detection:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    networks:
+      - carpoolink-network
+
   # STT Service (Port 4004)
   stt-service:
     build:
-      context: ./services/stt-service
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: services/stt-service/Dockerfile
     container_name: carpoolink-stt-service
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -126,8 +157,8 @@ services:
     ports:
       - "4004:4004"
     volumes:
-      - ../../services/stt-service:/app
-      - /app/node_modules
+      - ../../services/stt-service:/app/services/stt-service
+      - /app/services/stt-service/node_modules
     networks:
       - carpoolink-network
     command: npm run dev

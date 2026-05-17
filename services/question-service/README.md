@@ -16,6 +16,46 @@ $env:QUESTION_SERVICE_PYTHON="..\venv\Scripts\python.exe"
 npm run dev -w services/question-service
 ```
 
+## Python model API
+
+The question detection model can also run as a long-lived FastAPI process so
+the Python model artifacts are loaded once and reused across requests. The same
+model API also exposes question clustering.
+
+Install the Python dependencies:
+
+```powershell
+..\venv\Scripts\python.exe -m pip install -r services\question-service\requirements.txt
+```
+
+Run the model API:
+
+```powershell
+npm.cmd run dev:question:model
+```
+
+You can also run the same app directly with Uvicorn:
+
+```powershell
+Set-Location services\question-service
+..\..\..\venv\Scripts\python.exe -m uvicorn python_api.app:app --host 127.0.0.1 --port 8000
+```
+
+Set `QUESTION_PRELOAD_KC_ELECTRA=true` to load KC-ELECTRA during startup instead
+of lazily on the first request routed to the neural model.
+
+To route the Node question-service through the model API, start the model API
+first, then run the Node service with:
+
+```powershell
+Set-Location C:\Users\admin\Desktop\Capstone_design_2026\Capstone\carpoolink
+$env:QUESTION_MODEL_API_URL="http://127.0.0.1:8000"
+npm.cmd run dev:question
+```
+
+With Docker Compose, `question-service` is wired to the internal
+`question-model-api` service automatically.
+
 ## API
 
 ### `POST /api/question-detection/predict`
@@ -51,6 +91,7 @@ Response fields include `cluster_count`, `clusters`, and per-question
 ## Environment Variables
 
 - `QUESTION_SERVICE_PORT`: HTTP port. Defaults to `4003`.
+- `QUESTION_MODEL_API_URL`: FastAPI model API base URL. When set, question detection and clustering use HTTP instead of spawning Python subprocesses.
 - `QUESTION_SERVICE_PYTHON`: Python executable path for inference and clustering.
 - `QUESTION_DETECTION_SCRIPT_PATH`: override hybrid detection script path.
 - `QUESTION_TFIDF_ARTIFACT_DIR`: TF-IDF artifact directory.
