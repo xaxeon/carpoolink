@@ -95,9 +95,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } = useWebRtcSession(webRtcConfig);
 
-    const currentQuestion = questions[currentIdx];
-
-    // [질문 목록 로드]
+// [질문 목록 로드 - 초기 DB 데이터 반영]
     useEffect(() => {
         const fetchQuestions = async () => {
             if (!mentoringId) return;
@@ -107,13 +105,14 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     params: { status: "BEFORE" }
                 });
                 if (response.data?.questions) {
-                    // API 응답에서 필요한 필드만 추출하여 Question 타입으로 변환
+                    // 팀원의 API 응답 데이터를 본인의 데이터 구조(type, avatar 등)와 호환되도록 매핑
                     const mappedQuestions = response.data.questions.map((q: any) => ({
                         id: q.questionId,
-                        isPaid: q.isPaid || false,
+                        type: q.isPaid ? "paid" : "free",
+                        isPaid: q.isPaid || false, // 💡 [추가 1] 타입스크립트 에러 해결
                         isPrivate: q.isPrivate || false,
                         author: q.user?.nickname || "익명멘티",
-                        avatar: "👤",
+                        avatar: q.isPaid ? "💎" : "👤",
                         content: q.content,
                     }));
                     setQuestions(mappedQuestions);
@@ -128,14 +127,49 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         fetchQuestions();
     }, [mentoringId]);
 
-    // 질문 목록(questions)의 길이가 줄어들 때 인덱스를 안전하게 가리키도록 동기화
+    // 💡 [하이브리드 큐 생성] DB의 기존 질문들과 실시간 채팅창의 질문들을 중복 없이 결합합니다.
+    const questionQueue = useMemo(() => {
+        // 1. 실시간 채팅 목록에서 질문들만 필터링하여 매핑
+        const chatQuestions = chats
+            .filter((chat) => chat.isQuestion || chat.type === 'paid')
+            .map((chat) => ({
+                id: chat.questionId || chat.id,
+                type: chat.type,
+                isPaid: chat.type === 'paid', // 💡 [추가 2] 타입스크립트 에러 해결
+                isPrivate: chat.isPrivate || false,
+                author: chat.author,
+                avatar: chat.type === 'paid' ? "💎" : "👤",
+                content: chat.content
+            }));
+
+        // 2. 초기 DB 질문 리스트(questions)를 기반으로 두고, 실시간 질문 중 중복되지 않은 것만 큐에 추가
+        const unified = [...questions];
+        chatQuestions.forEach((cq) => {
+            const isDuplicate = unified.some((q) => String(q.id) === String(cq.id));
+            if (!isDuplicate) {
+                unified.push(cq);
+            }
+        });
+
+        return unified;
+    }, [questions, chats]);
+
+    // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
+    const currentQuestion = questionQueue[currentIdx];
+
+    // 질문 목록(questionQueue)의 길이가 줄어들거나 변경될 때 인덱스를 안전하게 가리키도록 동기화
     useEffect(() => {
-        if (questions.length === 0) {
+        if (questionQueue.length === 0) {
             setCurrentIdx(0);
-        } else if (currentIdx >= questions.length) {
-            setCurrentIdx(questions.length - 1);
+        } else if (currentIdx >= questionQueue.length) {
+            setCurrentIdx(questionQueue.length - 1);
         }
-    }, [questions.length, currentIdx]);
+    }, [questionQueue.length, currentIdx]);
+
+    // page.tsx의 컴포넌트 내부 적절한 위치에 추가해서 로그를 확인해보세요.
+    useEffect(() => {
+        console.log("현재 들어온 전체 채팅 목록:", chats);
+    }, [chats]);
 
     // [채팅 소켓 설정]
     useEffect(() => {
@@ -247,10 +281,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }
     }, [chats, isChatOpen]);
 
+    // 💡 [수정 2] 다음 질문/답변 완료 버튼 로직 수정
     const handleNextQuestion = () => {
-        if (questions.length === 0) return;
-        setCurrentIdx((prev) => (prev + 1) % questions.length);
-        setIsReading(false);
+    // 💡 실시간 하이브리드 큐(questionQueue)의 범위를 벗어나지 않도록 안전하게 인덱스 증가
+        if (currentIdx < questionQueue.length) {
+            setCurrentIdx((prev) => prev + 1); // 인덱스를 올려 다음 질문으로 이동 (끝에 도달 시 빈 카드 노출)
+            setIsReading(false); // 새로운 질문을 읽기 위해 기존 읽기 상태 초기화
+        }
     };
 
     const acknowledgeQuestion = async (questionId: number) => {
@@ -334,6 +371,48 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             <div className="flex-1 flex flex-col px-4 overflow-hidden relative">
                 {/* 상단 영역: 질문 카드 + 비디오 화면 */}
                 <div className={`flex flex-col transition-all duration-500 ${!isChatOpen ? 'flex-1 justify-center' : 'justify-start pt-2'}`}>
+                    
+                    {/* 질문 카드 영역 */}
+                    {currentQuestion ? (
+                        <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 transition-all duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
+                            <div className="flex flex-col gap-3 flex-1">
+                                <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">
+                                            {currentQuestion?.avatar}
+                                        </div>
+                                        <span className="font-bold text-[14px]">{currentQuestion?.author}</span>
+                                        {/* 질문 순서 표시 */}
+                                        <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1">
+                                            {currentIdx + 1} / {questionQueue.length}
+                                        </span>
+                                    </div>
+                                    {currentQuestion?.isPrivate && (
+                                        <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
+                                            <Lock className="w-3 h-3" strokeWidth={3} /> 비공개 질문
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
+                            </div>
+                            <div className="flex flex-col gap-2 shrink-0 justify-center">
+                                <button onClick={() => setIsReading(true)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
+                                    <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
+                                    {isReading ? '읽는 중...' : '질문 읽기'}
+                                </button>
+                                <button onClick={handleNextQuestion} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700">
+                                    답변 완료
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        // 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
+                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-sm border border-gray-800 bg-[#1A1A1A] text-gray-400 flex flex-col items-center justify-center min-h-[120px]">
+                            <MessageSquare className="w-6 h-6 mb-2 opacity-50" />
+                            <p className="text-sm font-medium">현재 대기 중인 질문이 없습니다.</p>
+                            <p className="text-xs text-gray-500 mt-1">채팅창에 올라온 질문이 이곳에 표시됩니다.</p>
+                        </div>
+                    )}
 
                     {/* [1] 질문 카드 영역 */}
                     {isLoadingQuestions ? (
@@ -384,12 +463,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
                         {/* 비디오 내부 상단 뱃지 (질문이 있을 때만 노출) */}
                         <div className="relative w-full flex justify-center pt-4 z-10">
-                            {currentQuestion ? (
+                            {/* 현재 질문이 있을 때만 뱃지 렌더링 */}
+                            {currentQuestion && (
                                 <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
                                     {currentQuestion.isPrivate ? "비공개 질문 답변중" : "공개 질문 답변중"}
-                                </div>
-                            ) : (
-                                <div>
                                 </div>
                             )}
                         </div>
