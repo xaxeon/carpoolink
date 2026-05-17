@@ -41,6 +41,12 @@ jobs:
             question-service:
               - 'services/question-service/**'
               - 'packages/**'
+            question-model-api:
+              - 'services/question-service/python_api/**'
+              - 'services/question-service/scripts/**'
+              - 'services/question-service/requirements.txt'
+              - 'services/question-service/Dockerfile.model-api'
+              - 'services/model/question_detection.dvc'
             stt-service:
               - 'services/stt-service/**'
               - 'packages/**'
@@ -49,7 +55,7 @@ jobs:
         id: force-all
         if: github.event_name == 'workflow_dispatch'
         run: |
-          echo 'changes=["core-api", "chat-service", "media-server", "question-service", "stt-service"]' >> $GITHUB_OUTPUT
+          echo 'changes=["core-api", "chat-service", "media-server", "question-model-api", "question-service", "stt-service"]' >> $GITHUB_OUTPUT
   
   buildAndPush:
     name: Build and Push ${{ matrix.service }}
@@ -90,11 +96,20 @@ jobs:
             type=raw,value=${{ github.sha }}
             type=raw,value=latest
 
+      - name: Resolve Dockerfile
+        id: dockerfile
+        run: |
+          if [ "${{ matrix.service }}" = "question-model-api" ]; then
+            echo "path=./services/question-service/Dockerfile.model-api" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=./services/${{ matrix.service }}/Dockerfile" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./services/${{ matrix.service }}/Dockerfile
+          file: ${{ steps.dockerfile.outputs.path }}
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
@@ -218,7 +233,24 @@ jobs:
                     -p 4003:4003 \
                     --network carpoolink-network \
                     --env-file /app/.env \
+                    -e QUESTION_MODEL_API_URL=http://carpoolink-question-model-api:8000 \
                     ghcr.io/${{ env.REPO_OWNER }}/question-service:${{ github.sha }}
+                  ;;
+                "question-model-api")
+                  if [ ! -d /app/services/model/question_detection ]; then
+                    echo "Missing /app/services/model/question_detection on EC2."
+                    echo "Upload or restore the DVC model artifacts before deploying question-model-api."
+                    exit 1
+                  fi
+                  docker run --restart always \
+                    -d --name carpoolink-question-model-api \
+                    --network carpoolink-network \
+                    --env-file /app/.env \
+                    -e QUESTION_PRELOAD_KC_ELECTRA=true \
+                    -e QUESTION_TFIDF_ARTIFACT_DIR=/app/services/model/question_detection/tfidf_lr_rule_filter_off \
+                    -e QUESTION_KC_ELECTRA_DIR=/app/services/model/question_detection/kc_electra_question_detector \
+                    -v /app/services/model/question_detection:/app/services/model/question_detection:ro \
+                    ghcr.io/${{ env.REPO_OWNER }}/question-model-api:${{ github.sha }}
                   ;;
                 "stt-service")
                   docker run --restart always \
