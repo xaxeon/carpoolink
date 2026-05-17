@@ -108,8 +108,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     // API 응답에서 필요한 필드만 추출하여 Question 타입으로 변환
                     const mappedQuestions = response.data.questions.map((q: any) => ({
                         id: q.questionId,
-                        isPaid: q.paid || false,
-                        isPrivate: q.status === "PRIVATE",
+                        isPaid: q.isPaid || false,
+                        isPrivate: q.isPrivate || false,
                         author: q.user?.nickname || "익명멘티",
                         avatar: "👤",
                         content: q.content,
@@ -125,6 +125,15 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
         fetchQuestions();
     }, [mentoringId]);
+
+    // 질문 목록(questions)의 길이가 줄어들 때 인덱스를 안전하게 가리키도록 동기화
+    useEffect(() => {
+        if (questions.length === 0) {
+            setCurrentIdx(0);
+        } else if (currentIdx >= questions.length) {
+            setCurrentIdx(questions.length - 1);
+        }
+    }, [questions.length, currentIdx]);
 
     // [채팅 소켓 설정]
     useEffect(() => {
@@ -178,13 +187,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             try {
                 const q = data?.question;
                 if (!q) return;
+
                 const removeId = Number(q.questionId);
-                setQuestions((prev) => {
-                    const next = prev.filter(p => p.id !== removeId);
-                    // 현재 인덱스가 새 배열의 범위를 넘지 않도록 조정
-                    setCurrentIdx((idx) => Math.max(0, Math.min(idx, Math.max(0, next.length - 1))));
-                    return next;
-                });
+
+                setQuestions((prev) => prev.filter(p => p.id !== removeId));
             } catch (e) {
                 console.error('question:completed 처리 중 에러', e);
             }
@@ -257,7 +263,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         try {
             await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
             setIsReading(false);
-            handleNextQuestion();
+
+            setQuestions((prev) => prev.filter(q => q.id !== questionId));
         } catch (err: any) {
             console.error('질문 완료 처리 실패', err);
             alert(err?.response?.data?.message || '질문 완료 처리에 실패했습니다.');
@@ -378,8 +385,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                     {currentQuestion.isPrivate ? "비공개 질문 답변중" : "공개 질문 답변중"}
                                 </div>
                             ) : (
-                                <div className="text-[11px] font-bold px-4 py-1.5 rounded-full bg-gray-800 text-gray-400">
-                                    대기 중
+                                <div>
                                 </div>
                             )}
                         </div>

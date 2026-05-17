@@ -24,7 +24,6 @@ app.get('/health', (req, res) => {
     res.json({ service: 'question-service', status: 'ok' });
 });
 
-// 질문 감지 엔드포인트
 app.post('/api/question-detection/predict', async (req, res) => {
     const { text } = req.body ?? {};
 
@@ -50,7 +49,6 @@ app.post('/api/question-detection/predict', async (req, res) => {
     }
 });
 
-// 질문 클러스터링 엔드포인트
 app.post('/api/question-clustering/cluster', async (req, res) => {
     const {
         questions,
@@ -88,7 +86,6 @@ app.post('/api/question-clustering/cluster', async (req, res) => {
     }
 });
 
-// 질문 답변 가능성 랭킹 엔드포인트
 app.post('/api/questions/rank', async (req, res) => {
     try {
         const result = await rankQuestion(req.body ?? {});
@@ -102,7 +99,6 @@ app.post('/api/questions/rank', async (req, res) => {
     }
 });
 
-// 질문 답변 가능성 일괄 랭킹 엔드포인트
 app.post('/api/questions/rank-batch', async (req, res) => {
     try {
         const result = await rankQuestions(req.body ?? {});
@@ -116,7 +112,6 @@ app.post('/api/questions/rank-batch', async (req, res) => {
     }
 });
 
-// 질문 추천 엔드포인트
 app.post('/api/questions/recommendations', async (req, res) => {
     try {
         const result = await generateQuestionRecommendations(req.body ?? {});
