@@ -51,12 +51,22 @@ def resolve_kc_electra_dir(model_dir: Path) -> Path:
     return model_dir
 
 
-def load_kc_electra_pipeline(model_dir: Path):
-    model_dir = resolve_kc_electra_dir(model_dir)
-    config = json.loads((model_dir / "inference_config.json").read_text(encoding="utf-8-sig"))
+def resolve_kc_electra_model_dir(model_dir: Path, config: dict[str, Any]) -> Path:
+    bundled_model_dir = model_dir / "model"
+    if bundled_model_dir.exists():
+        return bundled_model_dir
+
     local_model_dir = Path(config["local_model_dir"])
     if not local_model_dir.is_absolute():
         local_model_dir = (REPO_ROOT / local_model_dir).resolve()
+
+    return local_model_dir
+
+
+def load_kc_electra_pipeline(model_dir: Path):
+    model_dir = resolve_kc_electra_dir(model_dir)
+    config = json.loads((model_dir / "inference_config.json").read_text(encoding="utf-8-sig"))
+    local_model_dir = resolve_kc_electra_model_dir(model_dir, config)
 
     tokenizer = AutoTokenizer.from_pretrained(str(local_model_dir))
     model = AutoModelForSequenceClassification.from_pretrained(str(local_model_dir))
