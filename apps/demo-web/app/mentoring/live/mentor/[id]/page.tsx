@@ -150,8 +150,14 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 unified.push(cq);
             }
         });
+        // 3. 유료 질문 우선 정렬 로직
+        // 결합된 배열(unified)을 유료와 무료로 분리.
+        const paidQuestions = unified.filter(q => q.isPaid);
+        const freeQuestions = unified.filter(q => !q.isPaid);
 
-        return unified;
+        // 유료 질문들을 무조건 배열의 맨 앞으로 보내고, 그 뒤에 무료 질문들을 붙임.
+        // 각각의 배열 내에서는 FIFO 유지.
+        return [...paidQuestions, ...freeQuestions];
     }, [questions, chats]);
 
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
@@ -162,7 +168,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         if (questionQueue.length === 0) {
             setCurrentIdx(0);
         } else if (currentIdx >= questionQueue.length) {
-            setCurrentIdx(questionQueue.length - 1);
+            // 모든 질문을 다 본 상태(currentIdx === questionQueue.length)를 허용.
+            // 새치기 등으로 인해 인덱스가 전체 길이를 '초과'했을 때만 마지막 인덱스로 보정.
+            setCurrentIdx(questionQueue.length);
         }
     }, [questionQueue.length, currentIdx]);
 
@@ -373,7 +381,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 <div className={`flex flex-col transition-all duration-500 ${!isChatOpen ? 'flex-1 justify-center' : 'justify-start pt-2'}`}>
                     
                     {/* 질문 카드 영역 */}
-                    {currentQuestion ? (
+                    {isLoadingQuestions ? (
+                        // 1. 로딩 중 상태
+                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-white flex items-center justify-center min-h-[120px]">
+                            <div className="w-6 h-6 border-2 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin"></div>
+                        </div>
+                    ) : currentQuestion ? (
+                        // 2. 대기 중인 질문이 있을 때
                         <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 transition-all duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
                             <div className="flex flex-col gap-3 flex-1">
                                 <div className="flex items-center justify-between w-full">
@@ -406,48 +420,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             </div>
                         </div>
                     ) : (
-                        // 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
+                        // 3. 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
                         <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-sm border border-gray-800 bg-[#1A1A1A] text-gray-400 flex flex-col items-center justify-center min-h-[120px]">
                             <MessageSquare className="w-6 h-6 mb-2 opacity-50" />
                             <p className="text-sm font-medium">현재 대기 중인 질문이 없습니다.</p>
                             <p className="text-xs text-gray-500 mt-1">채팅창에 올라온 질문이 이곳에 표시됩니다.</p>
                         </div>
                     )}
-
-                    {/* [1] 질문 카드 영역 */}
-                    {isLoadingQuestions ? (
-                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-white flex items-center justify-center h-24">
-                            <div className="w-6 h-6 border-2 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin"></div>
-                        </div>
-                    ) : questions.length === 0 ? (
-                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-gray-400 flex items-center justify-center h-24">
-                            질문이 없습니다.
-                        </div>
-                    ) : currentQuestion ? (
-                        <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 ${currentQuestion.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
-                            <div className="flex flex-col gap-3 flex-1">
-                                <div className="flex items-center justify-between w-full">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">{currentQuestion.avatar}</div>
-                                        <span className="font-bold text-[14px]">{currentQuestion.author}</span>
-                                    </div>
-                                    {currentQuestion.isPrivate && (
-                                        <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
-                                            <Lock className="w-3 h-3" strokeWidth={3} /> 비공개 질문
-                                        </div>
-                                    )}
-                                </div>
-                                <p className="font-extrabold text-[16px] leading-snug">{currentQuestion.content}</p>
-                            </div>
-                            <div className="flex flex-col gap-2 shrink-0 justify-center">
-                                <button onClick={() => acknowledgeQuestion(currentQuestion.id)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
-                                    <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
-                                    {isReading ? '읽는 중...' : '질문 읽기'}
-                                </button>
-                                <button onClick={() => completeQuestion(currentQuestion.id)} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0]">답변 완료</button>
-                            </div>
-                        </div>
-                    ) : null}
 
                     {/* [2] 비디오 화면 영역 (조건부 렌더링 {currentQuestion &&} 제거) */}
                     <div className="w-full aspect-[16/9] bg-[#1A1A1A] rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-2xl border border-gray-800 shrink-0">
