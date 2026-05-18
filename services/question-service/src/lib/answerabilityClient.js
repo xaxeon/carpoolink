@@ -1,5 +1,4 @@
-import { computeAnswerability } from '../../scripts/question-sorting/calculator.js';
-import { clusterQuestions } from './questionClusterClient.js';
+import { computeAnswerability } from '../../scripts/question-ranking/calculator.js';
 
 function normalizeBatchQuestion(rawQuestion, index) {
     const text = rawQuestion.text ?? rawQuestion.question ?? '';
@@ -13,6 +12,10 @@ function normalizeBatchQuestion(rawQuestion, index) {
         userId: rawQuestion.userId ?? null,
         raw: rawQuestion,
     };
+}
+
+function getQuestionId(question, index) {
+    return question.id ?? question.question_id ?? `question_${index + 1}`;
 }
 
 function compareRankedQuestions(left, right) {
@@ -47,14 +50,146 @@ function getClusterPriorityScore(representative, clusterSize) {
     return tierBase + boostedAnswerabilityScore;
 }
 
-function normalizeClusteringQuestion(question) {
+function hasClusteringPayload(input) {
+    return Array.isArray(input?.clustering?.clusters) || Array.isArray(input?.clusters);
+}
+
+function getClusteringPayload(input) {
+    return Array.isArray(input?.clustering?.clusters) ? input.clustering : input;
+}
+
+function normalizeClusterMember(member, fallbackIndex) {
+    const id = member.question_id ?? member.id ?? `question_${fallbackIndex + 1}`;
+    const text = member.text ?? member.question ?? '';
+
     return {
-        question_id: question.id,
-        text: question.text,
+        id: String(id),
+        text,
     };
 }
 
+function buildQuestionMetadata(questions) {
+    const metadataById = new Map();
+
+    if (!Array.isArray(questions)) {
+        return metadataById;
+    }
+
+    questions.forEach((question, index) => {
+        const id = String(getQuestionId(question, index));
+        metadataById.set(id, normalizeBatchQuestion(question, index));
+    });
+
+    return metadataById;
+}
+
+function collectQuestionsFromClusters(clusters, metadataById) {
+    const questionById = new Map();
+
+    clusters.forEach(cluster => {
+        const members = Array.isArray(cluster.member_questions)
+            ? cluster.member_questions
+            : cluster.memberQuestions;
+        const fallbackMembers = members?.length ? members : [{
+            question_id: cluster.representative_question_id ?? cluster.representativeQuestionId,
+            text: cluster.representative_question ?? cluster.representativeQuestion,
+        }];
+
+        fallbackMembers.forEach((member, memberIndex) => {
+            const normalizedMember = normalizeClusterMember(member, questionById.size + memberIndex);
+            const metadata = metadataById.get(normalizedMember.id);
+
+            questionById.set(normalizedMember.id, {
+                ...(metadata ?? {}),
+                id: normalizedMember.id,
+                text: metadata?.text || normalizedMember.text,
+                isPaid: Boolean(metadata?.isPaid ?? member.isPaid),
+            });
+        });
+    });
+
+    return [...questionById.values()].map((question, index) => normalizeBatchQuestion(question, index));
+}
+
+function normalizeClusterMembers(cluster, scoreById) {
+    const members = Array.isArray(cluster.member_questions)
+        ? cluster.member_questions
+        : cluster.memberQuestions;
+    const fallbackMembers = members?.length ? members : [{
+        question_id: cluster.representative_question_id ?? cluster.representativeQuestionId,
+        text: cluster.representative_question ?? cluster.representativeQuestion,
+    }];
+
+    return fallbackMembers
+        .map((member, index) => normalizeClusterMember(member, index).id)
+        .map(memberId => scoreById.get(memberId))
+        .filter(Boolean);
+}
+
+function getRepresentativeQuestionId(cluster) {
+    const representativeId = cluster.representative_question_id ?? cluster.representativeQuestionId;
+    return representativeId === undefined || representativeId === null ? null : String(representativeId);
+}
+
+function rankScoredClusters(clustering, scoredQuestions) {
+    const scoreById = new Map(scoredQuestions.map(question => [question.id, question]));
+
+    return (clustering.clusters ?? []).map(cluster => {
+        const scoredMembers = normalizeClusterMembers(cluster, scoreById);
+        if (scoredMembers.length === 0) {
+            throw new Error('Each cluster must include at least one question that can be ranked.');
+        }
+
+        const representative = selectRepresentative(
+            scoredMembers,
+            getRepresentativeQuestionId(cluster),
+        );
+        const rankedMembers = [...scoredMembers].sort(compareRankedQuestions);
+        const priorityScore = getClusterPriorityScore(representative, scoredMembers.length);
+
+        return {
+            clusterId: cluster.cluster_id ?? cluster.clusterId,
+            clusterSize: scoredMembers.length,
+            priorityTier: representative.priorityTier,
+            priorityScore,
+            answerabilityScore: representative.answerabilityScore,
+            representativeQuestionId: representative.id,
+            representativeText: representative.text,
+            clusteringRepresentativeQuestionId: getRepresentativeQuestionId(cluster),
+            clusteringRepresentativeText: cluster.representative_question ?? cluster.representativeQuestion,
+            similarityScore: cluster.best_match_score ?? cluster.bestMatchScore,
+            similarQuestionIds: rankedMembers
+                .filter(member => member.id !== representative.id)
+                .map(member => member.id),
+            questions: rankedMembers.map(member => ({
+                id: member.id,
+                text: member.text,
+                isPaid: member.isPaid,
+                priorityScore: member.priorityScore,
+                answerabilityScore: member.answerabilityScore,
+                priorityTier: member.priorityTier,
+                priorityGroup: member.priorityGroup,
+                scores: member.scores,
+            })),
+        };
+    }).sort((left, right) => {
+        if (left.priorityScore !== right.priorityScore) {
+            return right.priorityScore - left.priorityScore;
+        }
+
+        if (left.clusterSize !== right.clusterSize) {
+            return right.clusterSize - left.clusterSize;
+        }
+
+        return String(left.representativeQuestionId).localeCompare(String(right.representativeQuestionId));
+    });
+}
+
 export async function rankQuestion(input) {
+    if (hasClusteringPayload(input)) {
+        return rankClusteredQuestions(input);
+    }
+
     const {
         question,
         isPaid            = false,
@@ -94,35 +229,37 @@ export async function rankQuestion(input) {
     });
 }
 
-export async function rankQuestions(input) {
+async function rankClusteredQuestions(input) {
     const {
-        questions = [],
-        threshold,
-        clusterSimilarityThreshold,
-        similarityMode,
-        embeddingModel,
+        questions,
         answeredQuestions = [],
         queuedQuestions: _ignoredQueuedQuestions = [],
+        clustering: _ignoredClustering,
+        service: _ignoredService,
+        question_count: _ignoredQuestionCount,
+        cluster_count: _ignoredClusterCount,
+        threshold: _ignoredThreshold,
+        similarity_mode: _ignoredSimilarityMode,
+        similarityMode: _ignoredSimilarityModeCamel,
+        embedding_model: _ignoredEmbeddingModel,
+        embeddingModel: _ignoredEmbeddingModelCamel,
+        clusters: _ignoredClusters,
+        assignments: _ignoredAssignments,
         ...sharedContext
     } = input ?? {};
+    const clustering = getClusteringPayload(input);
 
-    if (!Array.isArray(questions) || questions.length === 0) {
-        throw new Error('`questions` must be a non-empty array.');
+    if (!Array.isArray(clustering.clusters) || clustering.clusters.length === 0) {
+        throw new Error('`clustering.clusters` must be a non-empty array.');
     }
 
-    const normalizedQuestions = questions.map(normalizeBatchQuestion);
+    const metadataById = buildQuestionMetadata(questions);
+    const normalizedQuestions = collectQuestionsFromClusters(clustering.clusters, metadataById);
     for (const question of normalizedQuestions) {
         if (typeof question.text !== 'string' || !question.text.trim()) {
             throw new Error('Each question text must be a non-empty string.');
         }
     }
-
-    const clustering = await clusterQuestions({
-        questions: normalizedQuestions.map(normalizeClusteringQuestion),
-        threshold: threshold ?? clusterSimilarityThreshold,
-        similarityMode,
-        embeddingModel,
-    });
 
     const scoredQuestions = await Promise.all(normalizedQuestions.map(async question => {
         const result = await computeAnswerability({
@@ -138,57 +275,8 @@ export async function rankQuestions(input) {
             ...result,
         };
     }));
-
     const scoreById = new Map(scoredQuestions.map(question => [question.id, question]));
-    const rankedClusters = (clustering.clusters ?? []).map(cluster => {
-        const memberIds = (cluster.member_questions ?? []).map(member => String(member.question_id));
-        const scoredMembers = memberIds
-            .map(memberId => scoreById.get(memberId))
-            .filter(Boolean);
-
-        const representative = selectRepresentative(
-            scoredMembers,
-            String(cluster.representative_question_id),
-        );
-        const rankedMembers = [...scoredMembers].sort(compareRankedQuestions);
-        const priorityScore = getClusterPriorityScore(representative, scoredMembers.length);
-
-        return {
-            clusterId: cluster.cluster_id,
-            clusterSize: scoredMembers.length,
-            priorityTier: representative.priorityTier,
-            priorityScore,
-            answerabilityScore: representative.answerabilityScore,
-            representativeQuestionId: representative.id,
-            representativeText: representative.text,
-            clusteringRepresentativeQuestionId: String(cluster.representative_question_id),
-            clusteringRepresentativeText: cluster.representative_question,
-            similarityScore: cluster.best_match_score,
-            similarQuestionIds: rankedMembers
-                .filter(member => member.id !== representative.id)
-                .map(member => member.id),
-            questions: rankedMembers.map(member => ({
-                id: member.id,
-                text: member.text,
-                isPaid: member.isPaid,
-                priorityScore: member.priorityScore,
-                answerabilityScore: member.answerabilityScore,
-                priorityTier: member.priorityTier,
-                priorityGroup: member.priorityGroup,
-                scores: member.scores,
-            })),
-        };
-    }).sort((left, right) => {
-        if (left.priorityScore !== right.priorityScore) {
-            return right.priorityScore - left.priorityScore;
-        }
-
-        if (left.clusterSize !== right.clusterSize) {
-            return right.clusterSize - left.clusterSize;
-        }
-
-        return String(left.representativeQuestionId).localeCompare(String(right.representativeQuestionId));
-    });
+    const rankedClusters = rankScoredClusters(clustering, scoredQuestions);
 
     const rankedQuestions = rankedClusters.map(cluster => {
         const representative = scoreById.get(cluster.representativeQuestionId);
@@ -212,11 +300,11 @@ export async function rankQuestions(input) {
         rankedQuestions,
         clusters: rankedClusters,
         clustering: {
-            questionCount: clustering.question_count,
-            clusterCount: clustering.cluster_count,
+            questionCount: clustering.question_count ?? clustering.questionCount ?? scoredQuestions.length,
+            clusterCount: clustering.cluster_count ?? clustering.clusterCount ?? rankedClusters.length,
             threshold: clustering.threshold,
-            similarityMode: clustering.similarity_mode,
-            embeddingModel: clustering.embedding_model,
+            similarityMode: clustering.similarity_mode ?? clustering.similarityMode,
+            embeddingModel: clustering.embedding_model ?? clustering.embeddingModel,
         },
     };
 }

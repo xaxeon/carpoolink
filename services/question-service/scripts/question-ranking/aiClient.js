@@ -13,7 +13,7 @@ const serviceRoot = path.resolve(__dirname, '..', '..');
 const DEFAULT_SCRIPT_PATH = path.join(
     serviceRoot,
     'scripts',
-    'question-sorting',
+    'question-ranking',
     'compute_embedding_scores.py',
 );
 

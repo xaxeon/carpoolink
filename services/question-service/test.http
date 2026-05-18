@@ -1,143 +1,109 @@
 ### Health check
 GET http://localhost:4003/health
 
-### 질문 탐지
+### Question detection
 POST http://localhost:4003/api/question-detection/predict
 Content-Type: application/json
 
 {
-  "text": "포트폴리오는 어떻게 준비하면 될까요?"
+  "text": "이 부분 다시 설명해주실 수 있나요?"
 }
 
-### Answerability 점수 계산
-POST http://localhost:4003/api/questions/rank
+### Question clustering
+POST http://localhost:4003/api/question-clustering/cluster
 Content-Type: application/json
 
 {
-  "question": "3년차 백엔드 개발자로 이직 준비 중인데 포트폴리오는 어떻게 구성하면 될까요?",
-  "isPaid": false,
-  "sessionTopic": "개발자 이직 준비",
-  "currentSlideTitle": "포트폴리오 구성과 프로젝트 설명",
-  "currentScriptSection": "이번 파트에서는 이직용 포트폴리오를 프로젝트 중심으로 구성하는 방법을 설명합니다. 문제 정의, 본인 역할, 기술 선택 이유, 성과 지표를 중심으로 정리해야 합니다.",
-  "nextScriptSection": "다음 파트에서는 면접에서 포트폴리오 프로젝트를 설명할 때 자주 받는 꼬리 질문과 답변 전략을 다룹니다.",
-  "recentMentorUtterances": [
-    "포트폴리오는 프로젝트 위주로 구성하는 게 좋아요",
-    "깃허브에 꾸준히 커밋 이력을 남기는 것도 중요해요"
-  ],
-  "menteeProfile": "3년차 백엔드 개발자, 스타트업 이직 준비 중, 포트폴리오 재구성 고민",
-  "mentorProfile": "5년차 백엔드 엔지니어, 스타트업 이직 경험 보유",
-  "mentorPastScripts": []
-}
-
-### 라이브 스트리밍 현실 입력 예시
-POST http://localhost:4003/api/questions/rank
-Content-Type: application/json
-
-{
-  "question": "결제 서버 장애를 줄인 프로젝트를 포트폴리오에 넣을 때 장애 원인 분석이랑 개선 지표를 어느 정도까지 써야 할까요?",
-  "isPaid": true,
-  "sessionTopic": "백엔드 개발자 이직 포트폴리오 라이브 멘토링",
-  "currentSlideTitle": "프로젝트 경험을 성과 중심으로 설명하기",
-  "previousScriptSections": [
-    "앞부분에서는 포트폴리오에 넣을 프로젝트를 고르는 기준을 설명했습니다. 단순히 큰 프로젝트보다 본인이 문제를 정의하고 개선한 경험이 드러나는 프로젝트가 좋습니다.",
-    "이어서 프로젝트 설명은 배경, 문제, 역할, 해결 과정, 결과 순서로 정리하면 면접관이 이해하기 쉽다고 안내했습니다.",
-    "직전 구간에서는 성과 지표를 쓸 때 장애율, 처리량, 응답 시간, 비용 절감처럼 비교 가능한 수치를 넣어야 한다고 설명했습니다."
-  ],
-  "currentScriptSection": "지금은 포트폴리오에서 프로젝트 경험을 어떻게 설명할지 다루고 있습니다. 단순히 사용 기술을 나열하기보다 문제 상황, 본인 역할, 해결 과정, 정량적 성과를 함께 보여주는 것이 중요합니다.",
-  "nextScriptSection": "다음으로는 면접관이 포트폴리오 프로젝트를 보고 자주 묻는 기술 선택 이유, 트러블슈팅, 협업 방식 질문에 답하는 방법을 설명합니다.",
-  "recentMentorUtterances": [
-    "프로젝트를 쓸 때는 내가 어떤 문제를 발견했고 어떤 기준으로 해결했는지가 보여야 합니다.",
-    "예를 들어 장애율을 줄였다면 이전 수치와 개선 후 수치를 같이 적어야 설득력이 생깁니다.",
-    "기술 이름보다 그 기술을 선택한 이유가 더 중요합니다."
-  ],
-  "menteeProfile": "3년차 백엔드 개발자, 결제 도메인 경험 있음, 이직용 포트폴리오 작성 중",
-  "mentorProfile": "7년차 백엔드 엔지니어, 결제 시스템 운영과 장애 대응 경험, 스타트업 채용 면접관 경험 보유",
-  "mentorExpertiseEvidence": [
-    "멘토는 결제 승인 서버의 장애 대응과 재발 방지 프로세스를 설계한 경험이 있습니다.",
-    "멘토는 채용 면접에서 백엔드 지원자의 포트폴리오 프로젝트 설명을 평가한 경험이 있습니다.",
-    "멘토는 장애율 개선, 응답 시간 개선, 모니터링 지표 설계 사례를 라이브에서 여러 번 설명했습니다."
-  ],
-  "mentorPastScripts": [
-    "장애 대응 경험은 원인, 대응, 재발 방지, 수치 개선 순서로 설명하면 좋습니다.",
-    "포트폴리오에서 성능 개선 경험은 기준 지표와 개선 결과를 함께 써야 합니다."
-  ],
-  "answeredQuestions": [
-    "포트폴리오에 프로젝트를 몇 개 넣는 게 좋나요?"
-  ],
-  "queuedQuestions": [
-    "장애 대응 경험을 포트폴리오에 적을 때 수치를 어떻게 보여줘야 하나요?",
-    "결제 서버 개선 프로젝트에서 어떤 지표를 강조해야 할까요?"
-  ]
-}
-
-### 유료 질문 테스트
-POST http://localhost:4003/api/questions/rank
-Content-Type: application/json
-
-{
-  "question": "저는 신입인데 이거 어떻게 해요?",
-  "isPaid": true,
-  "sessionTopic": "개발자 이직 준비",
-  "currentSlideTitle": "포트폴리오 구성과 프로젝트 설명",
-  "currentScriptSection": "이번 파트에서는 이직용 포트폴리오를 프로젝트 중심으로 구성하는 방법을 설명합니다.",
-  "nextScriptSection": "다음 파트에서는 면접에서 포트폴리오 프로젝트를 설명하는 방법을 다룹니다.",
-  "recentMentorUtterances": [],
-  "menteeProfile": "신입 백엔드 취업 준비생",
-  "mentorProfile": "5년차 백엔드 엔지니어",
-  "mentorPastScripts": []
-}
-
-### 질문 군집화 기반 batch 정렬
-POST http://localhost:4003/api/questions/rank-batch
-Content-Type: application/json
-
-{
-  "sessionTopic": "백엔드 개발자 이직 포트폴리오 라이브 멘토링",
-  "currentSlideTitle": "프로젝트 경험을 성과 중심으로 설명하기",
-  "previousScriptSections": [
-    "앞부분에서는 이직용 포트폴리오에 어떤 프로젝트를 넣을지 고르는 기준을 설명했습니다. 본인이 문제를 발견하고 해결 방향을 정하고 결과를 개선한 경험이 드러나는 프로젝트가 좋다고 안내했습니다.",
-    "직전 구간에서는 장애율, 평균 응답 시간, 처리량처럼 전후 비교가 가능한 성과 지표를 포트폴리오에 쓰는 방법을 설명했습니다."
-  ],
-  "currentScriptSection": "지금은 포트폴리오에서 프로젝트 경험을 어떻게 설명할지 다루고 있습니다. 문제 상황, 본인 역할, 해결 과정, 정량적 성과를 함께 보여주는 것이 중요합니다.",
-  "nextScriptSection": "다음으로는 면접관이 포트폴리오 프로젝트를 보고 자주 묻는 기술 선택 이유와 트러블슈팅 질문에 답하는 방법을 설명합니다.",
-  "recentMentorUtterances": [
-    "장애율을 줄였다면 이전 수치와 개선 후 수치를 같이 적어야 설득력이 생깁니다.",
-    "기술 이름보다 그 기술을 선택한 이유와 개선 결과가 더 중요합니다."
-  ],
-  "menteeProfile": "백엔드 개발자 또는 백엔드 취업 준비생",
-  "mentorProfile": "7년차 백엔드 엔지니어, 결제 시스템 운영과 장애 대응 경험, 스타트업 채용 면접관 경험 보유",
-  "mentorExpertiseEvidence": [
-    "멘토는 결제 승인 서버의 장애 대응과 재발 방지 프로세스를 설계한 경험이 있습니다.",
-    "멘토는 채용 면접에서 백엔드 지원자의 포트폴리오 프로젝트 설명을 평가한 경험이 있습니다."
-  ],
-  "answeredQuestions": [
-    "포트폴리오에 프로젝트를 몇 개 넣는 게 좋나요?"
-  ],
   "questions": [
     {
       "id": "q1",
-      "text": "결제 서버 장애를 줄인 프로젝트를 포트폴리오에 넣을 때 장애 원인 분석이랑 개선 지표를 어느 정도까지 써야 할까요?",
+      "text": "useState 값이 바로 안 바뀌는 이유가 뭔가요?"
+    },
+    {
+      "id": "q2",
+      "text": "useEffect는 언제 실행되나요?"
+    }
+  ],
+  "similarityMode": "rule",
+  "threshold": 0.5
+}
+
+### Rank one question
+POST http://localhost:4003/api/questions/rank
+Content-Type: application/json
+
+{
+  "question": "useState 값이 바로 안 바뀌는 이유가 뭔가요?",
+  "isPaid": true,
+  "sessionTopic": "React state management",
+  "currentScriptSection": "useState updates are reflected on the next render.",
+  "mentorProfile": "React frontend mentor",
+  "menteeProfile": "Beginner React learner"
+}
+
+### Rank an existing clustering result
+POST http://localhost:4003/api/questions/rank
+Content-Type: application/json
+
+{
+  "sessionTopic": "React state management",
+  "currentScriptSection": "useState updates are reflected on the next render.",
+  "mentorProfile": "React frontend mentor",
+  "menteeProfile": "Beginner React learner",
+  "questions": [
+    {
+      "id": "q1",
+      "text": "useState 값이 바로 안 바뀌는 이유가 뭔가요?",
       "isPaid": true
     },
     {
       "id": "q2",
-      "text": "장애 대응 경험을 포트폴리오에 적을 때 수치를 어떻게 보여줘야 하나요?",
-      "isPaid": false
-    },
-    {
-      "id": "q3",
-      "text": "결제 서버 개선 프로젝트에서 어떤 지표를 강조해야 할까요?",
-      "isPaid": false
-    },
-    {
-      "id": "q4",
-      "text": "면접에서 기술 선택 이유를 물어보면 어떻게 답하면 좋을까요?",
-      "isPaid": true
-    },
-    {
-      "id": "q5",
-      "text": "연봉 협상은 언제 하는 게 좋아요?",
+      "text": "useEffect는 언제 실행되나요?",
       "isPaid": false
     }
-  ]
+  ],
+  "clustering": {
+    "question_count": 2,
+    "cluster_count": 1,
+    "threshold": 0.5,
+    "similarity_mode": "rule",
+    "embedding_model": null,
+    "clusters": [
+      {
+        "cluster_id": "cluster_1",
+        "representative_question_id": "q1",
+        "representative_question": "useState 값이 바로 안 바뀌는 이유가 뭔가요?",
+        "best_match_score": 0.71,
+        "member_questions": [
+          {
+            "question_id": "q1",
+            "text": "useState 값이 바로 안 바뀌는 이유가 뭔가요?"
+          },
+          {
+            "question_id": "q2",
+            "text": "useEffect는 언제 실행되나요?"
+          }
+        ]
+      }
+    ]
+  }
+}
+
+### Question recommendations
+POST http://localhost:4003/api/questions/recommendations
+Content-Type: application/json
+
+{
+  "context": "React useState and useEffect live mentoring session.",
+  "count": 3,
+  "mentee": {
+    "id": "mentee-1",
+    "level": "beginner",
+    "interests": ["React"]
+  },
+  "mentor": {
+    "id": "mentor-1",
+    "role": "frontend mentor",
+    "expertise": ["React", "state management"]
+  }
 }

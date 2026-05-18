@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { clusterQuestions } from './lib/questionClusterClient.js';
 import { predictQuestion } from './lib/questionDetectorClient.js';
-import { rankQuestion, rankQuestions } from './lib/answerabilityClient.js';
+import { rankQuestion } from './lib/answerabilityClient.js';
 import {
     generateQuestionRecommendations,
     QuestionRecommendationError,
@@ -91,20 +91,9 @@ app.post('/api/questions/rank', async (req, res) => {
         const result = await rankQuestion(req.body ?? {});
         return res.json({ service: 'question-service', ...result });
     } catch (error) {
-        const isInvalidRequest = error.message.includes('must be a non-empty string');
-        return res.status(isInvalidRequest ? 400 : 500).json({
-            error: isInvalidRequest ? 'INVALID_REQUEST' : 'RANKING_FAILED',
-            message: error.message,
-        });
-    }
-});
-
-app.post('/api/questions/rank-batch', async (req, res) => {
-    try {
-        const result = await rankQuestions(req.body ?? {});
-        return res.json({ service: 'question-service', ...result });
-    } catch (error) {
-        const isInvalidRequest = error.message.includes('questions') || error.message.includes('non-empty string');
+        const isInvalidRequest = error.message.includes('must be a non-empty string')
+            || error.message.includes('clustering.clusters')
+            || error.message.includes('Each question text');
         return res.status(isInvalidRequest ? 400 : 500).json({
             error: isInvalidRequest ? 'INVALID_REQUEST' : 'RANKING_FAILED',
             message: error.message,
