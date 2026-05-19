@@ -7,6 +7,14 @@ import { prisma } from "@carpoolink/database";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() }); // 파일을 메모리에 임시 저장
+const MEDIA_SERVER_URL = process.env.MEDIA_SERVER_URL || 'http://localhost:4002';
+
+const COMMANDS = [
+  { keywords: ['질문 읽어'], type: 'READ_QUESTION' },
+  { keywords: ['다음 질문'], type: 'READ_QUESTION' },
+  { keywords: ['비공개', '완료'], type: 'END_PRIVATE' },
+  { keywords: ['비공개', '답변'], type: 'START_PRIVATE' },
+];
 
 /*
 POST /stt/chunk
@@ -37,6 +45,16 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
     // 1. Whisper STT
     const text = await transcribeAudio(audioFile);
 
+    const commandType = detectCommand(text);
+    if (commandType) {
+      console.log(`[COMMAND] ${commandType} - "${text}"`);
+      fetch(`${MEDIA_SERVER_URL}/commands/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: commandType, mentoringId, userId }),
+      }).catch((e) => console.error('[COMMAND] 전송 실패', e.message));
+    }
+
     // 2. DB 저장
     const saved = await saveScript(
       {
@@ -56,6 +74,7 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
       scriptId: saved.scriptId.toString(),
       text,
       chunkIndex: parseInt(chunkIndex),
+      ...(commandType && { command: commandType }),
     });
   } catch (err) {
     console.error("[STT ERROR]", err);
@@ -135,5 +154,12 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
   }
 });
 
+function detectCommand(text) {
+  for (const cmd of COMMANDS) {
+    if (cmd.keywords.every(k => text.includes(k)))
+      return cmd.type;
+  }
+  return null;
+}
 
 export default router;
