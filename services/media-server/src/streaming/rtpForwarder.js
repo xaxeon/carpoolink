@@ -57,6 +57,7 @@ export class RtpForwarder {
 
     async start({ router, producer, mentoringId, userId }) {
         const port = this._allocPort();
+        console.log('[RtpForwarder] starting, port:', port, 'producer:', producer.id);
 
         const plainTransport = await router.createPlainTransport({
             listenIp: { ip: '127.0.0.1', announcedIp: null },
@@ -105,6 +106,7 @@ export class RtpForwarder {
         const MAX_PENDING_BYTES = 25 * PCM_BYTES_PER_SEC;
 
         ffmpeg.stdout.on('data', (chunk) => {
+            if (state.pcmBuffer.length === 0) console.log('[RtpForwarder] 첫 오디오 수신, size:', chunk.length);
             state.pcmBuffer = Buffer.concat([state.pcmBuffer, chunk]);
 
             // 침묵 없이 연속 발화 시, 미처리 구간이 최대치 초과하면 강제 flush
@@ -119,6 +121,7 @@ export class RtpForwarder {
 
         ffmpeg.stderr.on('data', (data) => {
             const text = data.toString();
+            if (!text.includes('silence_')) console.log('[FFmpeg]', text.trim()); // silence 이벤트 외 모두 출력
 
             for (const startMatch of text.matchAll(/silence_start:\s*([\d.]+)/g)) {
                 const silenceStartSec = parseFloat(startMatch[1]);
@@ -130,11 +133,8 @@ export class RtpForwarder {
 
                 // 이미 처리된 구간의 stale 이벤트 무시
                 if (relEndByte <= state.lastCutByte) {
-                    state.lastSilenceStartSec = silenceStartSec;
                     return;
                 }
-
-                state.lastCutByte = relEndByte;
 
                 const speechPcm = state.pcmBuffer.slice(state.lastCutByte, relEndByte);
                 if (speechPcm.length > 0) {
@@ -150,12 +150,16 @@ export class RtpForwarder {
 
             for (const endMatch of text.matchAll(/silence_end:\s*([\d.]+)/g)) {
                 const silenceEndSec = parseFloat(endMatch[1]);
-                const silenceDuration = state.lastSilenceStartSec !== null
-                    ? silenceEndSec - state.lastSilenceStartSec
-                    : 0;
 
                 const absEndByte = Math.floor(silenceEndSec * PCM_BYTES_PER_SEC);
-                state.lastCutByte = absEndByte - state.pcmByteOffset;
+                const relEndByte = absEndByte - state.pcmByteOffset;
+
+                if (relEndByte <= state.lastCutByte) {
+                    state.lastSpeechStartSec = silenceEndSec;
+                    return;
+                }
+
+                state.lastCutByte = relEndByte;
                 state.lastSpeechStartSec = silenceEndSec;
 
                 this._flushPending(state);
@@ -165,6 +169,7 @@ export class RtpForwarder {
 
         ffmpeg.on('close', () => {
             // 세션 종료 시 남은 발화 flush
+            console.log('[RtpForwarder] FFmpeg 종료, code:', code, 'pcmBuffer:', state.pcmBuffer.length, 'bytes');
             const remaining = state.pcmBuffer.slice(state.lastCutByte);
             if (remaining.length > 0) {
                 state.pendingPcm = Buffer.concat([state.pendingPcm, remaining]);
