@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import http from 'http';
 import express from 'express';
 import sttRouter from './routes/stt.js'
 import ttsRouter from './routes/tts.js'
@@ -14,6 +14,8 @@ app.get('/health', (req, res) => {
     res.json({ service: 'stt-service', status: 'ok' });
 });
 
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+
+httpServer.listen(PORT, () => {
     console.log(`stt-service running on http://localhost:${PORT}`);
 });
