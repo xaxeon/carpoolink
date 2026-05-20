@@ -3,15 +3,22 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-
-// 💡 프로젝트 환경에 맞게 apiClient 경로를 확인해주세요. (예: "@/lib/apiClient" 또는 "@/api/client")
 import apiClient from "@/lib/apiClient";
 
 import { io, Socket } from "socket.io-client";
-import { Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown, AlertCircle, Play } from "lucide-react";
+import { Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown, AlertCircle, Play, Lock } from "lucide-react";
 
 import { useMentoringSession } from "@/hooks/useMentoringSession";
 import { useWebRtcSession } from "@/hooks/useWebRtcSession";
+
+interface Question {
+    id: number;
+    isPaid: boolean;
+    isPrivate: boolean;
+    author: string;
+    avatar: string;
+    content: string;
+}
 
 interface ChatMessage {
     id: string | number;
@@ -121,6 +128,7 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
     const [chats, setChats] = useState<ChatMessage[]>([]);
     const [onlineUserCount, setOnlineUserCount] = useState<number>(0);
     const [isChatClosed, setIsChatClosed] = useState(false);
+    const [currentAnsweringQuestion, setCurrentAnsweringQuestion] = useState<Question | null>(null);
 
     const { sessionData, isLoading, error, isConnected, peerId, socket: rtcSocket } =
         useMentoringSession({ role, userId });
@@ -168,6 +176,35 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
 
         socket.on("connect_error", (err) => {
             console.error("❌ [채팅] 소켓 연결 실패! 상세 원인:", err.message);
+        });
+
+        // 멘토가 질문 읽기를 눌렀을 때 (상태 -> ANSWERING)
+        socket.on('question:acknowledged', (data: any) => {
+            const q = data?.question;
+            if (q) {
+                setCurrentAnsweringQuestion({
+                    id: Number(q.questionId),
+                    isPaid: q.isPaid || false,
+                    isPrivate: q.isPrivate || false,
+                    author: q.user?.nickname || '익명멘티',
+                    avatar: q.isPaid ? "💎" : "👤",
+                    content: q.content,
+                });
+            }
+        });
+
+        // 멘토가 답변 완료를 눌렀을 때 (상태 -> COMPLETED)
+        socket.on('question:completed', (data: any) => {
+            const q = data?.question;
+            if (q) {
+                setCurrentAnsweringQuestion((prev) => {
+                    // 완료된 질문이 현재 화면에 떠있는 질문과 같으면 화면에서 내립니다.
+                    if (prev && prev.id === Number(q.questionId)) {
+                        return null;
+                    }
+                    return prev;
+                });
+            }
         });
 
         socket.on("message_history", (messages: any[]) => {
@@ -333,7 +370,22 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
             </header>
 
             <div className="px-4 shrink-0 z-10 flex flex-col gap-3">
-                <div className="w-full aspect-[16/9] bg-gray-800 rounded-2xl relative overflow-hidden flex items-center justify-center">
+                {/* 현재 답변 중인 질문이 있고, '공개(isPrivate: false)'일 때만 질문 카드를 렌더링합니다. */}
+                {currentAnsweringQuestion && !currentAnsweringQuestion.isPrivate && (
+                    <div className={`w-full rounded-[20px] p-4 shrink-0 shadow-lg flex justify-between gap-3 animate-in slide-in-from-top-4 fade-in duration-300 ${currentAnsweringQuestion.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
+                        <div className="flex flex-col gap-2 flex-1">
+                            <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 bg-black/10 rounded-full flex items-center justify-center text-xs">
+                                    {currentAnsweringQuestion.avatar}
+                                </div>
+                                <span className="font-bold text-[13px]">{currentAnsweringQuestion.author}</span>
+                            </div>
+                            <p className="font-bold text-[15px] leading-snug">{currentAnsweringQuestion.content}</p>
+                        </div>
+                    </div>
+                )}
+
+                <div className="w-full aspect-[16/9] bg-gray-800 rounded-2xl relative overflow-hidden flex items-center justify-center shadow-xl border border-gray-800/50">
                     {remoteStreams.size > 0 ? (
                         <>
                             {Array.from(remoteStreams.entries()).map(([id, stream]) => (
@@ -367,10 +419,21 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                             <div className="text-gray-400 text-sm animate-pulse">멘토의 영상을 기다리는 중...</div>
                         </div>
                     )}
+                    
                     <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
-                    <div className="absolute top-4 bg-red-600 text-white text-[11px] font-bold px-4 py-1.5 rounded-full shadow-lg z-10">
-                        비공개 질문 답변중
-                    </div>
+                    
+                    {/* 비디오 내부 상단 뱃지(질문 읽기 상태일 때만 노출, 비공개/공개 색상 구분) */}
+                    {currentAnsweringQuestion && (
+                        <div className={`absolute top-4 text-[11px] font-bold px-4 py-1.5 rounded-full backdrop-blur-md shadow-md animate-in fade-in duration-300 ${
+                            currentAnsweringQuestion.isPrivate 
+                                ? 'bg-red-600 text-white' 
+                                : 'bg-[#FFCC00] text-[#1A1A1A]'
+                        }`}>
+                            <span className="text-xs font-bold tracking-wide">
+                                {currentAnsweringQuestion.isPrivate ? '비공개 질문 답변 중' : '공개 질문 답변 중'}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -388,14 +451,14 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-5 z-10 custom-scrollbar">
-                {/* 유료 질문을 제외한 순수 채팅 개수만 체크 */}
+                {/* 유료 질문을 걸러낸 순수 채팅 개수만 체크 */}
                 {chats.filter((chat) => chat.type !== 'paid').length === 0 ? (
                     <div className="h-full flex items-center justify-center text-gray-500 text-sm">
                         채팅 내역이 없습니다. 첫 인사를 남겨보세요!
                     </div>
                 ) : (
                     chats
-                        // 유료 질문은 화면에 아예 렌더링하지 않음.
+                        // 유료 질문은 채팅창 화면에 아예 렌더링하지 않음
                         .filter((chat) => chat.type !== 'paid')
                         .map((chat) => {
                             const isMentor = sessionData?.host?.userId && String(chat.senderId) === String(sessionData.host.userId);
@@ -520,10 +583,10 @@ const MediaRenderer = memo(function MediaRenderer({ stream, onBlocked }: { strea
     const isVideo = stream.getVideoTracks().length > 0;
     const hasAudio = stream.getAudioTracks().length > 0;
 
-    // 1. 💡 스트림 설정 및 재생 관리 Effect
+    // 1. 스트림 설정 및 재생 관리 Effect
     useEffect(() => {
         if (mediaRef.current && stream) {
-            // 🚨 [핵심] 이미 엘리먼트에 같은 스트림이 주입되어 있다면 아무것도 하지 않습니다.
+            // 이미 엘리먼트에 같은 스트림이 주입되어 있다면 아무것도 하지 않습니다.
             // srcObject를 매번 새로 대입하면 비디오 파이프라인이 초기화되면서 깜빡임이 발생합니다.
             if (mediaRef.current.srcObject !== stream) {
                 mediaRef.current.srcObject = stream;
@@ -537,7 +600,7 @@ const MediaRenderer = memo(function MediaRenderer({ stream, onBlocked }: { strea
         }
     }, [stream, onBlocked]); // 이펙트 재실행 시 srcObject를 null로 밀어버리는 코드를 제거함
 
-    // 2. 💡 진짜 컴포넌트가 '언마운트' 될 때만 미디어 자원을 깔끔하게 해제하는 별도 Effect
+    // 2. 진짜 컴포넌트가 '언마운트' 될 때만 미디어 자원을 깔끔하게 해제하는 별도 Effect
     useEffect(() => {
         return () => {
             if (mediaRef.current) {
