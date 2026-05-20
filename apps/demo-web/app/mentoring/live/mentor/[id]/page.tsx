@@ -8,7 +8,6 @@ import { PhoneOff, Users, Volume2, Settings, Mic, MicOff, Video, VideoOff, Messa
 
 import { useMentoringSession } from "@/hooks/useMentoringSession";
 import { useWebRtcSession } from "@/hooks/useWebRtcSession";
-// core-api 호출용 클라이언트
 import apiClient from "@/lib/apiClient";
 
 interface Question {
@@ -18,6 +17,8 @@ interface Question {
     author: string;
     avatar: string;
     content: string;
+    status?: string;
+    answerer?: { userId: number; nickname: string } | null;
 }
 
 interface ChatMessage {
@@ -62,7 +63,7 @@ export default function MentorLivePage() {
         );
     }
 
-    // 💡 정보가 확정된 후, 실제 소켓 로직이 있는 Content 컴포넌트 실행
+    // 정보가 확정된 후, 실제 소켓 로직이 있는 Content 컴포넌트 실행
     return <MentorLiveContent mentoringId={mentoringId} role={role} userId={userId} userName={userName} />;
 }
 
@@ -79,8 +80,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [isReading, setIsReading] = useState(false);
     const [questions, setQuestions] = useState<Question[]>([]);
     const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+    const [completedIds, setCompletedIds] = useState<number[]>([]);
 
-    // 💡 이제 이 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
+    // 이제 이 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
     const mentoringOptions = useMemo(() => ({ role, userId }), [role, userId]);
     const { sessionData, isConnected, peerId, socket, endMentoring, isLoading, error } = useMentoringSession(mentoringOptions);
 
@@ -95,26 +97,27 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } = useWebRtcSession(webRtcConfig);
 
-// [질문 목록 로드 - 초기 DB 데이터 반영]
+    // [질문 목록 로드 - 초기 DB 데이터 반영]
     useEffect(() => {
         const fetchQuestions = async () => {
             if (!mentoringId) return;
             setIsLoadingQuestions(true);
             try {
-                const response = await apiClient.get(`/api/mentorings/${mentoringId}/questions`, {
-                    params: { status: "BEFORE" }
-                });
+                const response = await apiClient.get(`/api/mentorings/${mentoringId}/questions`);
                 if (response.data?.questions) {
-                    // 팀원의 API 응답 데이터를 본인의 데이터 구조(type, avatar 등)와 호환되도록 매핑
-                    const mappedQuestions = response.data.questions.map((q: any) => ({
-                        id: q.questionId,
-                        type: q.isPaid ? "paid" : "free",
-                        isPaid: q.isPaid || false, // 💡 [추가 1] 타입스크립트 에러 해결
-                        isPrivate: q.isPrivate || false,
-                        author: q.user?.nickname || "익명멘티",
-                        avatar: q.isPaid ? "💎" : "👤",
-                        content: q.content,
-                    }));
+                    const mappedQuestions = response.data.questions
+                        .filter((q: any) => q.status !== 'COMPLETED') // 프론트에서 완료된 질문만 필터링
+                        .map((q: any) => ({
+                            id: q.questionId,
+                            type: q.isPaid ? "paid" : "free",
+                            isPaid: q.isPaid || false,
+                            isPrivate: q.isPrivate || false,
+                            author: q.user?.nickname || "익명멘티",
+                            avatar: q.isPaid ? "💎" : "👤",
+                            content: q.content,
+                            status: q.status,
+                            answerer: q.answerer 
+                        }));
                     setQuestions(mappedQuestions);
                 }
             } catch (err: any) {
@@ -127,38 +130,20 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         fetchQuestions();
     }, [mentoringId]);
 
-    // 💡 [하이브리드 큐 생성] DB의 기존 질문들과 실시간 채팅창의 질문들을 중복 없이 결합합니다.
+    // [질문 큐 생성] 검증된 questions 상태(DB + 질문 소켓 이벤트)만 사용하여 정렬.
     const questionQueue = useMemo(() => {
-        // 1. 실시간 채팅 목록에서 질문들만 필터링하여 매핑
-        const chatQuestions = chats
-            .filter((chat) => chat.isQuestion || chat.type === 'paid')
-            .map((chat) => ({
-                id: chat.questionId || chat.id,
-                type: chat.type,
-                isPaid: chat.type === 'paid', // 💡 [추가 2] 타입스크립트 에러 해결
-                isPrivate: chat.isPrivate || false,
-                author: chat.author,
-                avatar: chat.type === 'paid' ? "💎" : "👤",
-                content: chat.content
-            }));
+        const completedStringIds = completedIds.map(id => String(id));
 
-        // 2. 초기 DB 질문 리스트(questions)를 기반으로 두고, 실시간 질문 중 중복되지 않은 것만 큐에 추가
-        const unified = [...questions];
-        chatQuestions.forEach((cq) => {
-            const isDuplicate = unified.some((q) => String(q.id) === String(cq.id));
-            if (!isDuplicate) {
-                unified.push(cq);
-            }
-        });
-        // 3. 유료 질문 우선 정렬 로직
-        // 결합된 배열(unified)을 유료와 무료로 분리.
-        const paidQuestions = unified.filter(q => q.isPaid);
-        const freeQuestions = unified.filter(q => !q.isPaid);
+        // 1. 이미 완료 처리된 질문 ID는 한 번 더 확실하게 필터링합니다.
+        const activeQuestions = questions.filter(q => !completedStringIds.includes(String(q.id)));
 
-        // 유료 질문들을 무조건 배열의 맨 앞으로 보내고, 그 뒤에 무료 질문들을 붙임.
-        // 각각의 배열 내에서는 FIFO 유지.
+        // 2. 유료 질문 최우선 정렬 로직
+        const paidQuestions = activeQuestions.filter(q => q.isPaid);
+        const freeQuestions = activeQuestions.filter(q => !q.isPaid);
+
+        // 3. 유료 질문이 무조건 앞에 오고, 일반 질문이 뒤에 오도록 합쳐서 반환.
         return [...paidQuestions, ...freeQuestions];
-    }, [questions, chats]);
+    }, [questions, completedIds]);
 
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
     const currentQuestion = questionQueue[currentIdx];
@@ -168,16 +153,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         if (questionQueue.length === 0) {
             setCurrentIdx(0);
         } else if (currentIdx >= questionQueue.length) {
-            // 모든 질문을 다 본 상태(currentIdx === questionQueue.length)를 허용.
-            // 새치기 등으로 인해 인덱스가 전체 길이를 '초과'했을 때만 마지막 인덱스로 보정.
-            setCurrentIdx(questionQueue.length);
+            // 길이를 초과할 경우 안전하게 마지막 질문 카드를 가리키도록 보정 (-1 추가)
+            setCurrentIdx(questionQueue.length - 1);
         }
     }, [questionQueue.length, currentIdx]);
-
-    // page.tsx의 컴포넌트 내부 적절한 위치에 추가해서 로그를 확인해보세요.
-    useEffect(() => {
-        console.log("현재 들어온 전체 채팅 목록:", chats);
-    }, [chats]);
 
     // [채팅 소켓 설정]
     useEffect(() => {
@@ -227,13 +206,15 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             }
         });
 
+        // [채팅 소켓 설정 useEffect 내부의 완료 이벤트 리스너]
         newSocket.on('question:completed', (data: any) => {
             try {
                 const q = data?.question;
                 if (!q) return;
-
                 const removeId = Number(q.questionId);
 
+                // 완료 목록에 누적하여 큐에서 완전히 제외되도록 처리
+                setCompletedIds((prev) => [...prev, removeId]);
                 setQuestions((prev) => prev.filter(p => p.id !== removeId));
             } catch (e) {
                 console.error('question:completed 처리 중 에러', e);
@@ -291,33 +272,59 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }
     }, [chats, isChatOpen]);
 
-    // 💡 [수정 2] 다음 질문/답변 완료 버튼 로직 수정
+    // 다음 질문/답변 완료 버튼 로직
     const handleNextQuestion = () => {
-    // 💡 실시간 하이브리드 큐(questionQueue)의 범위를 벗어나지 않도록 안전하게 인덱스 증가
+    // questionQueue의 범위를 벗어나지 않도록 안전하게 인덱스 증가
         if (currentIdx < questionQueue.length) {
             setCurrentIdx((prev) => prev + 1); // 인덱스를 올려 다음 질문으로 이동 (끝에 도달 시 빈 카드 노출)
             setIsReading(false); // 새로운 질문을 읽기 위해 기존 읽기 상태 초기화
         }
     };
 
+    // [1] 답변 시작 시점 (질문 읽기 버튼)
     const acknowledgeQuestion = async (questionId: number) => {
+        if (!mentoringId || !questionId) {
+            console.error("🚨 [프론트 에러] 멘토링 ID 또는 질문 ID가 없습니다!", { mentoringId, questionId });
+            return;
+        }
+
         try {
-            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`);
+            console.log(`🚀 [API 요청] 질문 읽기 시작 (ID: ${questionId})`);
+            
+            const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`);
+            
             setIsReading(true);
+            console.log(`✅ [API 성공] 질문 상태가 ANSWERING으로 변경됨:`, res.data);
         } catch (err: any) {
-            console.error('질문 확인 실패', err);
+            console.error('❌ [API 실패] 질문 읽기 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 확인에 실패했습니다.');
         }
     };
 
+    // [2] 답변 완료 시점 (답변 완료 버튼)
     const completeQuestion = async (questionId: number) => {
-        try {
-            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
-            setIsReading(false);
+        if (!mentoringId || !questionId) {
+            console.error("🚨 [프론트 에러] 멘토링 ID 또는 질문 ID가 없습니다!", { mentoringId, questionId });
+            return;
+        }
 
+        try {
+            console.log(`🚀 [API 요청] 질문 완료 처리 시작 (ID: ${questionId})`);
+            
+            // 백엔드는 status가 'ANSWERING'일 때만 완료(complete)를 허락.
+            // 만약 멘토가 '질문 읽기'를 누르지 않고 바로 '답변 완료'를 눌렀을 경우를 대비해, 
+            // acknowledge를 강제로 한 번 찔러주고(에러는 무시) 바로 complete를 요청하도록 함.
+            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`).catch(() => {});
+            const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
+            
+            setIsReading(false);
+            setCurrentIdx(0); 
+            setCompletedIds((prev) => [...prev, questionId]);
             setQuestions((prev) => prev.filter(q => q.id !== questionId));
+            
+            console.log(`✅ [API 성공] 질문 상태가 COMPLETED로 변경됨:`, res.data);
         } catch (err: any) {
-            console.error('질문 완료 처리 실패', err);
+            console.error('❌ [API 실패] 질문 완료 처리 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 완료 처리에 실패했습니다.');
         }
     };
@@ -411,12 +418,22 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                 </div>
                                 <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
                             </div>
+                            {/* 질문 카드 우측 버튼 영역 */}
                             <div className="flex flex-col gap-2 shrink-0 justify-center">
-                                <button onClick={() => setIsReading(true)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
+                                {/* onClick에 acknowledgeQuestion(답변 시작) 함수 연결 */}
+                                <button 
+                                    onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))} 
+                                    className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
+                                >
                                     <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
                                     {isReading ? '읽는 중...' : '질문 읽기'}
                                 </button>
-                                <button onClick={handleNextQuestion} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700">
+                                
+                                {/* onClick에 completeQuestion(답변 완료) 함수 연결 */}
+                                <button 
+                                    onClick={() => completeQuestion(Number(currentQuestion?.id))} 
+                                    className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
+                                >
                                     답변 완료
                                 </button>
                             </div>
@@ -430,7 +447,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         </div>
                     )}
 
-                    {/* [2] 비디오 화면 영역 (조건부 렌더링 {currentQuestion &&} 제거) */}
+                    {/* [2] 비디오 화면 영역 */}
                     <div className="w-full aspect-[16/9] bg-[#1A1A1A] rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-2xl border border-gray-800 shrink-0">
                         {isCameraOn ? (
                             <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline muted />
@@ -442,11 +459,11 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         )}
                         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"></div>
 
-                        {/* 비디오 내부 상단 뱃지 (질문이 있을 때만 노출) */}
+                        {/* 비디오 내부 상단 뱃지 (질문이 존재하고, 질문 읽기 상태일 때만 노출) */}
                         <div className="relative w-full flex justify-center pt-4 z-10">
-                            {/* 현재 질문이 있을 때만 뱃지 렌더링 */}
-                            {currentQuestion && (
-                                <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
+                            {/* 질문 읽기 버튼이 작동했을 때만 뱃지를 렌더링합니다 */}
+                            {isReading && currentQuestion && (
+                                <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full backdrop-blur-md shadow-md animate-in fade-in duration-300 ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
                                     {currentQuestion.isPrivate ? "비공개 질문 답변중" : "공개 질문 답변중"}
                                 </div>
                             )}
