@@ -3,6 +3,7 @@ import {
     getMentoringStatus,
     verifyChatJoinAccess,
 } from '../database/chatRepository.js';
+import axios from "axios";
 
 const activeConnections = new Map(); // userId(string) -> Set<socketId>
 const socketStates = new Map(); // socketId -> { userId, userName, mentoringId }
@@ -263,14 +264,45 @@ export async function handleConnection(socket, io) {
                 return;
             }
 
-            // 데이터베이스에 메시지 저장
-            const chatMessage = await saveChatMessage({
-                mentoringId: BigInt(state.mentoringId),
-                userId: BigInt(state.userId),
-                content,
+            // 1. Question Service(4003) 호출하여 질문 여부 판별
+            let isQuestion = false;
+            try {
+                const QUESTION_API_URL = process.env.QUESTION_SERVICE_URL || 'http://localhost:4003';
+                const mlResponse = await axios.post(`${QUESTION_API_URL}/api/question-detection/predict`, {
+                    text: content
+                });
+                const result = mlResponse.data;
+                isQuestion = result.prediction === 'question' || result.is_question === true || result.isQuestion === true;
+            } catch (mlError) {
+                console.error('⚠️ [Question Detector] ML API 에러:', mlError.message);
+            }
+
+            // 2. 무조건 MentoringChat 테이블에 채팅 내역 저장
+            const chatMessage = await prisma.mentoringChat.create({
+                data: {
+                    mentoringId: BigInt(state.mentoringId),
+                    userId: BigInt(state.userId),
+                    content: content
+                }
             });
 
-            // 실시간 브로드캐스트
+            // 💡 3. [핵심] 질문으로 판별되었다면 Question 테이블에도 복사본 생성!
+            let savedQuestion = null;
+            if (isQuestion) {
+                savedQuestion = await prisma.question.create({
+                    data: {
+                        content: content,
+                        isPaid: false,      // 채팅방 기본 질문이므로 무료(false)로 설정
+                        isPrivate: false,   // 공개 채팅방이므로 공개(false)로 설정
+                        userId: BigInt(state.userId),
+                        mentoringId: BigInt(state.mentoringId),
+                        // priorityScore(0), status(BEFORE), createdAt(now)는 schema.prisma의 @default 값 자동 적용
+                    }
+                });
+                console.log(`✅ [Question Saved] 질문 테이블 등록 완료 (ID: ${savedQuestion.questionId})`);
+            }
+
+            // 4. 실시간 브로드캐스트 (프론트엔드로 전송)
             io.to(roomName).emit('new_message', {
                 mentoringChatId: chatMessage.mentoringChatId.toString(),
                 mentoringId: chatMessage.mentoringId.toString(),
@@ -278,6 +310,8 @@ export async function handleConnection(socket, io) {
                 userName: state.userName,
                 content,
                 createdAt: chatMessage.createdAt,
+                isQuestion: isQuestion, // 프론트엔드 UI용
+                questionId: savedQuestion ? savedQuestion.questionId.toString() : null // 추후 질문 패널 연동용
             });
         } catch (error) {
             console.error('Error in send_message:', error);
@@ -305,27 +339,55 @@ export async function handleConnection(socket, io) {
                 return;
             }
 
-            // Prisma에서 메시지 히스토리 조회
-            const messages = await global.prisma.mentoringChat.findMany({
-                where: { mentoringId: BigInt(state.mentoringId) },
-                include: {
-                    user: {
-                        select: { userId: true, nickname: true },
+            const targetMentoringId = BigInt(state.mentoringId);
+
+            // 💡 [동적 매핑 1단계] 두 테이블을 동시에 병렬(Promise.all) 조회하여 성능 최적화
+            const [messages, questions] = await Promise.all([
+                // Prisma에서 메시지 히스토리 조회
+                global.prisma.mentoringChat.findMany({
+                    where: { mentoringId: targetMentoringId },
+                    include: {
+                        user: {
+                            select: { userId: true, nickname: true },
+                        },
                     },
-                },
-                orderBy: { createdAt: 'asc' },
-                take: limit,
-                skip: offset,
+                    orderBy: { createdAt: 'asc' },
+                    take: limit,
+                    skip: offset,
+                }),
+                // 동일한 멘토링 방의 질문 테이블 조회 (질문 여부 체크용)
+                global.prisma.question.findMany({
+                    where: { mentoringId: targetMentoringId },
+                    select: { questionId: true, content: true, userId: true }
+                })
+            ]);
+
+            // 💡 [동적 매핑 2단계] 빠른 비교를 위해 질문 데이터를 고유 키(작성자ID + 내용) 형태의 Map으로 변환
+            const questionLookupMap = new Map();
+            questions.forEach((q) => {
+                const lookupKey = `${q.userId.toString()}_${q.content.trim()}`;
+                questionLookupMap.set(lookupKey, q.questionId.toString());
             });
 
-            const formattedMessages = messages.map((msg) => ({
-                mentoringChatId: msg.mentoringChatId.toString(),
-                mentoringId: msg.mentoringId.toString(),
-                userId: msg.userId.toString(),
-                userName: msg.user.nickname,
-                content: msg.content,
-                createdAt: msg.createdAt,
-            }));
+            // 💡 [동적 매핑 3단계] 채팅 히스토리에 질문 데이터가 매칭되는지 확인 후 결과 조립
+            const formattedMessages = messages.map((msg) => {
+                const messageKey = `${msg.userId.toString()}_${msg.content.trim()}`;
+                
+                // Map에 해당 key가 존재한다면 질문 테이블에 등록된 데이터임
+                const matchedQuestionId = questionLookupMap.get(messageKey) || null;
+                const isQuestion = matchedQuestionId !== null;
+
+                return {
+                    mentoringChatId: msg.mentoringChatId.toString(),
+                    mentoringId: msg.mentoringId.toString(),
+                    userId: msg.userId.toString(),
+                    userName: msg.user.nickname,
+                    content: msg.content,
+                    createdAt: msg.createdAt,
+                    isQuestion: isQuestion,               // ⬅️ 프론트엔드 실시간 UI 하이라이트용 고유 플래그
+                    questionId: matchedQuestionId,       // ⬅️ 추후 확장될 질문 관리 및 모아보기 연동용 ID
+                };
+            });
 
             socket.emit('message_history', formattedMessages);
         } catch (error) {

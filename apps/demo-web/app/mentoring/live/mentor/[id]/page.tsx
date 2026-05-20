@@ -8,7 +8,6 @@ import { PhoneOff, Users, Volume2, Settings, Mic, MicOff, Video, VideoOff, Messa
 
 import { useMentoringSession } from "@/hooks/useMentoringSession";
 import { useWebRtcSession } from "@/hooks/useWebRtcSession";
-// core-api 호출용 클라이언트
 import apiClient from "@/lib/apiClient";
 
 interface Question {
@@ -18,6 +17,8 @@ interface Question {
     author: string;
     avatar: string;
     content: string;
+    status?: string;
+    answerer?: { userId: number; nickname: string } | null;
 }
 
 interface ChatMessage {
@@ -25,6 +26,8 @@ interface ChatMessage {
     author: string;
     senderId: string;
     content: string;
+    isQuestion?: boolean;
+    questionId?: string | null;
 }
 
 // 1. 게이트웨이 컴포넌트: 정보가 준비될 때까지 로딩만 보여줌
@@ -60,7 +63,7 @@ export default function MentorLivePage() {
         );
     }
 
-    // 💡 정보가 확정된 후, 실제 소켓 로직이 있는 Content 컴포넌트 실행
+    // 정보가 확정된 후, 실제 소켓 로직이 있는 Content 컴포넌트 실행
     return <MentorLiveContent mentoringId={mentoringId} role={role} userId={userId} userName={userName} />;
 }
 
@@ -77,8 +80,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [isReading, setIsReading] = useState(false);
     const [questions, setQuestions] = useState<Question[]>([]);
     const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+    const [completedIds, setCompletedIds] = useState<number[]>([]);
 
-    // 💡 이제 이 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
+    // 이제 이 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
     const mentoringOptions = useMemo(() => ({ role, userId }), [role, userId]);
     const { sessionData, isConnected, peerId, socket, endMentoring, isLoading, error } = useMentoringSession(mentoringOptions);
 
@@ -93,27 +97,27 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } = useWebRtcSession(webRtcConfig);
 
-    const currentQuestion = questions[currentIdx];
-
-    // [질문 목록 로드]
+    // [질문 목록 로드 - 초기 DB 데이터 반영]
     useEffect(() => {
         const fetchQuestions = async () => {
             if (!mentoringId) return;
             setIsLoadingQuestions(true);
             try {
-                const response = await apiClient.get(`/api/mentorings/${mentoringId}/questions`, {
-                    params: { status: "BEFORE" }
-                });
+                const response = await apiClient.get(`/api/mentorings/${mentoringId}/questions`);
                 if (response.data?.questions) {
-                    // API 응답에서 필요한 필드만 추출하여 Question 타입으로 변환
-                    const mappedQuestions = response.data.questions.map((q: any) => ({
-                        id: q.questionId,
-                        isPaid: q.isPaid || false,
-                        isPrivate: q.isPrivate || false,
-                        author: q.user?.nickname || "익명멘티",
-                        avatar: "👤",
-                        content: q.content,
-                    }));
+                    const mappedQuestions = response.data.questions
+                        .filter((q: any) => q.status !== 'COMPLETED') // 프론트에서 완료된 질문만 필터링
+                        .map((q: any) => ({
+                            id: q.questionId,
+                            type: q.isPaid ? "paid" : "free",
+                            isPaid: q.isPaid || false,
+                            isPrivate: q.isPrivate || false,
+                            author: q.user?.nickname || "익명멘티",
+                            avatar: q.isPaid ? "💎" : "👤",
+                            content: q.content,
+                            status: q.status,
+                            answerer: q.answerer 
+                        }));
                     setQuestions(mappedQuestions);
                 }
             } catch (err: any) {
@@ -126,14 +130,33 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         fetchQuestions();
     }, [mentoringId]);
 
-    // 질문 목록(questions)의 길이가 줄어들 때 인덱스를 안전하게 가리키도록 동기화
+    // [질문 큐 생성] 검증된 questions 상태(DB + 질문 소켓 이벤트)만 사용하여 정렬.
+    const questionQueue = useMemo(() => {
+        const completedStringIds = completedIds.map(id => String(id));
+
+        // 1. 이미 완료 처리된 질문 ID는 한 번 더 확실하게 필터링합니다.
+        const activeQuestions = questions.filter(q => !completedStringIds.includes(String(q.id)));
+
+        // 2. 유료 질문 최우선 정렬 로직
+        const paidQuestions = activeQuestions.filter(q => q.isPaid);
+        const freeQuestions = activeQuestions.filter(q => !q.isPaid);
+
+        // 3. 유료 질문이 무조건 앞에 오고, 일반 질문이 뒤에 오도록 합쳐서 반환.
+        return [...paidQuestions, ...freeQuestions];
+    }, [questions, completedIds]);
+
+    // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
+    const currentQuestion = questionQueue[currentIdx];
+
+    // 질문 목록(questionQueue)의 길이가 줄어들거나 변경될 때 인덱스를 안전하게 가리키도록 동기화
     useEffect(() => {
-        if (questions.length === 0) {
+        if (questionQueue.length === 0) {
             setCurrentIdx(0);
-        } else if (currentIdx >= questions.length) {
-            setCurrentIdx(questions.length - 1);
+        } else if (currentIdx >= questionQueue.length) {
+            // 길이를 초과할 경우 안전하게 마지막 질문 카드를 가리키도록 보정 (-1 추가)
+            setCurrentIdx(questionQueue.length - 1);
         }
-    }, [questions.length, currentIdx]);
+    }, [questionQueue.length, currentIdx]);
 
     // [채팅 소켓 설정]
     useEffect(() => {
@@ -183,13 +206,15 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             }
         });
 
+        // [채팅 소켓 설정 useEffect 내부의 완료 이벤트 리스너]
         newSocket.on('question:completed', (data: any) => {
             try {
                 const q = data?.question;
                 if (!q) return;
-
                 const removeId = Number(q.questionId);
 
+                // 완료 목록에 누적하여 큐에서 완전히 제외되도록 처리
+                setCompletedIds((prev) => [...prev, removeId]);
                 setQuestions((prev) => prev.filter(p => p.id !== removeId));
             } catch (e) {
                 console.error('question:completed 처리 중 에러', e);
@@ -202,6 +227,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 author: m.user?.nickname || m.userName || "익명멘티",
                 senderId: String(m.userId),
                 content: m.content.replace("[유료] ", ""),
+                isQuestion: m.isQuestion, 
+                questionId: m.questionId,
             })) as ChatMessage[];
             setChats(mapped);
         });
@@ -213,6 +240,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 author: m.user?.nickname || m.userName || "익명멘티",
                 senderId: String(m.userId),
                 content: m.content.replace("[유료] ", ""),
+                isQuestion: m.isQuestion,
+                questionId: m.questionId,
             }]);
         });
 
@@ -243,30 +272,59 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }
     }, [chats, isChatOpen]);
 
+    // 다음 질문/답변 완료 버튼 로직
     const handleNextQuestion = () => {
-        if (questions.length === 0) return;
-        setCurrentIdx((prev) => (prev + 1) % questions.length);
-        setIsReading(false);
+    // questionQueue의 범위를 벗어나지 않도록 안전하게 인덱스 증가
+        if (currentIdx < questionQueue.length) {
+            setCurrentIdx((prev) => prev + 1); // 인덱스를 올려 다음 질문으로 이동 (끝에 도달 시 빈 카드 노출)
+            setIsReading(false); // 새로운 질문을 읽기 위해 기존 읽기 상태 초기화
+        }
     };
 
+    // [1] 답변 시작 시점 (질문 읽기 버튼)
     const acknowledgeQuestion = async (questionId: number) => {
+        if (!mentoringId || !questionId) {
+            console.error("🚨 [프론트 에러] 멘토링 ID 또는 질문 ID가 없습니다!", { mentoringId, questionId });
+            return;
+        }
+
         try {
-            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`);
+            console.log(`🚀 [API 요청] 질문 읽기 시작 (ID: ${questionId})`);
+            
+            const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`);
+            
             setIsReading(true);
+            console.log(`✅ [API 성공] 질문 상태가 ANSWERING으로 변경됨:`, res.data);
         } catch (err: any) {
-            console.error('질문 확인 실패', err);
+            console.error('❌ [API 실패] 질문 읽기 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 확인에 실패했습니다.');
         }
     };
 
+    // [2] 답변 완료 시점 (답변 완료 버튼)
     const completeQuestion = async (questionId: number) => {
-        try {
-            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
-            setIsReading(false);
+        if (!mentoringId || !questionId) {
+            console.error("🚨 [프론트 에러] 멘토링 ID 또는 질문 ID가 없습니다!", { mentoringId, questionId });
+            return;
+        }
 
+        try {
+            console.log(`🚀 [API 요청] 질문 완료 처리 시작 (ID: ${questionId})`);
+            
+            // 백엔드는 status가 'ANSWERING'일 때만 완료(complete)를 허락.
+            // 만약 멘토가 '질문 읽기'를 누르지 않고 바로 '답변 완료'를 눌렀을 경우를 대비해, 
+            // acknowledge를 강제로 한 번 찔러주고(에러는 무시) 바로 complete를 요청하도록 함.
+            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`).catch(() => {});
+            const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
+            
+            setIsReading(false);
+            setCurrentIdx(0); 
+            setCompletedIds((prev) => [...prev, questionId]);
             setQuestions((prev) => prev.filter(q => q.id !== questionId));
+            
+            console.log(`✅ [API 성공] 질문 상태가 COMPLETED로 변경됨:`, res.data);
         } catch (err: any) {
-            console.error('질문 완료 처리 실패', err);
+            console.error('❌ [API 실패] 질문 완료 처리 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 완료 처리에 실패했습니다.');
         }
     };
@@ -330,43 +388,66 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             <div className="flex-1 flex flex-col px-4 overflow-hidden relative">
                 {/* 상단 영역: 질문 카드 + 비디오 화면 */}
                 <div className={`flex flex-col transition-all duration-500 ${!isChatOpen ? 'flex-1 justify-center' : 'justify-start pt-2'}`}>
-
-                    {/* [1] 질문 카드 영역 */}
+                    
+                    {/* 질문 카드 영역 */}
                     {isLoadingQuestions ? (
-                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-white flex items-center justify-center h-24">
+                        // 1. 로딩 중 상태
+                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-white flex items-center justify-center min-h-[120px]">
                             <div className="w-6 h-6 border-2 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin"></div>
                         </div>
-                    ) : questions.length === 0 ? (
-                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-gray-400 flex items-center justify-center h-24">
-                            질문이 없습니다.
-                        </div>
                     ) : currentQuestion ? (
-                        <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 ${currentQuestion.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
+                        // 2. 대기 중인 질문이 있을 때
+                        <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 transition-all duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
                             <div className="flex flex-col gap-3 flex-1">
                                 <div className="flex items-center justify-between w-full">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">{currentQuestion.avatar}</div>
-                                        <span className="font-bold text-[14px]">{currentQuestion.author}</span>
+                                        <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">
+                                            {currentQuestion?.avatar}
+                                        </div>
+                                        <span className="font-bold text-[14px]">{currentQuestion?.author}</span>
+                                        {/* 질문 순서 표시 */}
+                                        <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1">
+                                            {currentIdx + 1} / {questionQueue.length}
+                                        </span>
                                     </div>
-                                    {currentQuestion.isPrivate && (
+                                    {currentQuestion?.isPrivate && (
                                         <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
                                             <Lock className="w-3 h-3" strokeWidth={3} /> 비공개 질문
                                         </div>
                                     )}
                                 </div>
-                                <p className="font-extrabold text-[16px] leading-snug">{currentQuestion.content}</p>
+                                <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
                             </div>
+                            {/* 질문 카드 우측 버튼 영역 */}
                             <div className="flex flex-col gap-2 shrink-0 justify-center">
-                                <button onClick={() => acknowledgeQuestion(currentQuestion.id)} className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}>
+                                {/* onClick에 acknowledgeQuestion(답변 시작) 함수 연결 */}
+                                <button 
+                                    onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))} 
+                                    className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
+                                >
                                     <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
                                     {isReading ? '읽는 중...' : '질문 읽기'}
                                 </button>
-                                <button onClick={() => completeQuestion(currentQuestion.id)} className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0]">답변 완료</button>
+                                
+                                {/* onClick에 completeQuestion(답변 완료) 함수 연결 */}
+                                <button 
+                                    onClick={() => completeQuestion(Number(currentQuestion?.id))} 
+                                    className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
+                                >
+                                    답변 완료
+                                </button>
                             </div>
                         </div>
-                    ) : null}
+                    ) : (
+                        // 3. 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
+                        <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-sm border border-gray-800 bg-[#1A1A1A] text-gray-400 flex flex-col items-center justify-center min-h-[120px]">
+                            <MessageSquare className="w-6 h-6 mb-2 opacity-50" />
+                            <p className="text-sm font-medium">현재 대기 중인 질문이 없습니다.</p>
+                            <p className="text-xs text-gray-500 mt-1">채팅창에 올라온 질문이 이곳에 표시됩니다.</p>
+                        </div>
+                    )}
 
-                    {/* [2] 비디오 화면 영역 (조건부 렌더링 {currentQuestion &&} 제거) */}
+                    {/* [2] 비디오 화면 영역 */}
                     <div className="w-full aspect-[16/9] bg-[#1A1A1A] rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-2xl border border-gray-800 shrink-0">
                         {isCameraOn ? (
                             <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline muted />
@@ -378,14 +459,12 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         )}
                         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"></div>
 
-                        {/* 비디오 내부 상단 뱃지 (질문이 있을 때만 노출) */}
+                        {/* 비디오 내부 상단 뱃지 (질문이 존재하고, 질문 읽기 상태일 때만 노출) */}
                         <div className="relative w-full flex justify-center pt-4 z-10">
-                            {currentQuestion ? (
-                                <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
+                            {/* 질문 읽기 버튼이 작동했을 때만 뱃지를 렌더링합니다 */}
+                            {isReading && currentQuestion && (
+                                <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full backdrop-blur-md shadow-md animate-in fade-in duration-300 ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
                                     {currentQuestion.isPrivate ? "비공개 질문 답변중" : "공개 질문 답변중"}
-                                </div>
-                            ) : (
-                                <div>
                                 </div>
                             )}
                         </div>
@@ -410,25 +489,34 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 {isChatOpen && (
                     <div className="flex-1 flex flex-col mt-4 animate-in fade-in slide-in-from-bottom-8 duration-500 overflow-hidden">
                         <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pb-6 pr-2">
-                            {chats.length === 0 ? (
+                            
+                            {/* 유료 질문을 제외한 순수 채팅 개수만 체크 */}
+                            {chats.filter((chat) => chat.type !== 'paid').length === 0 ? (
                                 <div className="h-full flex items-center justify-center text-gray-500 text-sm">
                                     아직 대화 내용이 없습니다.
                                 </div>
                             ) : (
-                                chats.map((chat) => (
-                                    <div key={chat.id} className="flex gap-3">
-                                        <div className="w-9 h-9 rounded-full bg-gray-800 border-2 border-[#FFCC00] shrink-0" />
-                                        <div className="flex flex-col items-start">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
-                                                {chat.type === 'paid' && <span className="bg-[#FFCC00] text-[#1A1A1A] text-[10px] font-extrabold px-1.5 py-0.5 rounded">유료 질문</span>}
+                                chats
+                                    // 유료 질문은 채팅창 화면에 아예 렌더링하지 않음.
+                                    .filter((chat) => chat.type !== 'paid')
+                                    .map((chat) => (
+                                        <div key={chat.id} className="flex gap-3">
+                                            <img 
+                                                src="/images/mentee_profile.jpg" 
+                                                alt={`${chat.author} 프로필`}
+                                                className="w-9 h-9 rounded-full border-2 border-[#FFCC00] shrink-0 object-cover bg-gray-800" 
+                                            />
+                                            <div className="flex flex-col items-start w-full"> 
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
+                                                </div>
+                                                
+                                                <div className="text-[15px] leading-relaxed break-all text-gray-100">
+                                                    {chat.content}
+                                                </div>
                                             </div>
-                                            <p className={`text-[15px] leading-relaxed break-all ${chat.type === 'paid' ? 'text-[#FFCC00]' : 'text-gray-100'}`}>
-                                                {chat.content}
-                                            </p>
                                         </div>
-                                    </div>
-                                ))
+                                    ))
                             )}
                             <div ref={messagesEndRef} />
                         </div>
