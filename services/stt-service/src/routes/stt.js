@@ -30,6 +30,9 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
   try {
     const { userId, mentoringId, chunkIndex, startTime, endTime, sessionOffset } = req.body;
 
+    // 요청이 stt-service까지 오는지 확인
+    console.log('[STT] /chunk 수신', { userId, mentoringId, chunkIndex, audioSize: req.file?.size });
+
     // 필수값 체크
     if (!req.file || !userId || !mentoringId || chunkIndex === undefined) {
       return res.status(400).json({ error: "audio, userId, mentoringId, chunkIndex는 필수입니다." });
@@ -44,6 +47,9 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
 
     // 1. Whisper STT
     const text = await transcribeAudio(audioFile);
+
+    // STT 인식결과
+    console.log('[STT] 인식 결과: ', text);
 
     const commandType = detectCommand(text);
     if (commandType) {
@@ -69,6 +75,9 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
         mentoringId,
       }
     );
+
+    // DB 저장 완료
+    console.log('[STT] 저장 완료, scriptId:', saved.scriptId.toString());
 
     res.json({
       scriptId: saved.scriptId.toString(),
