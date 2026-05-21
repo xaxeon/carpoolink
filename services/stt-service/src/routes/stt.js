@@ -16,6 +16,8 @@ const COMMANDS = [
   { keywords: ['비공개', '답변'], type: 'START_PRIVATE' },
 ];
 
+const privateState = new Map();
+
 /*
 POST /stt/chunk
 multipart/form-data:
@@ -55,6 +57,12 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
       }).catch((e) => console.error('[COMMAND] 전송 실패', e.message));
     }
 
+    if (commandType === 'START_PRIVATE')
+      privateState.set(String(mentoringId), true);
+    const isPrivate = privateState.get(String(mentoringId)) ?? false;
+    if (commandType === 'END_PRIVATE')
+      privateState.set(String(mentoringId), false);
+
     // 2. DB 저장
     const saved = await saveScript(
       {
@@ -63,6 +71,7 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
         startTime: startTime ? parseFloat(startTime) : undefined,
         endTime: endTime ? parseFloat(endTime) : undefined,
         sessionOffset: sessionOffset ? parseFloat(sessionOffset) : undefined,
+        isPrivate,
       },
       {
         userId,
@@ -103,8 +112,8 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
     // 발화자 userId 결정(1:N인 경우 멘토로 고정)
     const speakerUserId = mentoring.isGroup ? mentoring.userId.toString() : userId;
 
-    // 현재 비공개 질문/답변 여부는 false로 기본값 설정. 질문 관리 상태를 먼저 알아야 함
-    const isPrivate = false;
+    // 비공개 질문에 대한 답변 시 isPrivate 설정
+    const isPrivate = privateState.get(String(mentoringId)) ?? false;
 
     // 1. 청크 분할
     const chunks = await splitAudioIntoChunks(req.file.buffer, req.file.mimetype);
@@ -161,5 +170,11 @@ function detectCommand(text) {
   }
   return null;
 }
+
+router.post('/session/:mentoringId/end', (req, res) => {
+  privateState.delete(String(req.params.mentoringId));
+  console.log('[STT] 세션 정리됨:', req.params.mentoringId, '| 남은 세션:', privateState.size);
+  res.json({ ok: true });
+})
 
 export default router;
