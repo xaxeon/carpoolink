@@ -191,7 +191,7 @@ export class RtpForwarder {
 
     // 누적된 pendingPcm을 STT로 전송하고 pcmBuffer 앞부분을 정리
     _flushPending(state) {
-        if (state.pendingPcm.length < PCM_BYTES_PER_SEC * 0.5) {
+        if (state.pendingPcm.length < PCM_BYTES_PER_SEC * 1.0) {
             state.pendingPcm = Buffer.alloc(0);
             return;
         }
