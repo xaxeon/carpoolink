@@ -230,7 +230,7 @@ app.post('/commands/execute', async (req, res) => {
 
         switch (type) {
             case 'READ_QUESTION': {
-                const mentor = [...room.peers.values()].find(p => p.role === 'mentor');
+                const mentor = [...room.peers.values()].find(p => p.role === 'MENTOR');
                 mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
                 break;
             }
