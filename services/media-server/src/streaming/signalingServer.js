@@ -97,7 +97,7 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                     case 'joinMentoring': {
                         try {
                             const mentoringId = Number(data.mentoringId);
-                            const role = data.role ?? 'MENTEE';
+                            const role = (data.role ?? 'MENTEE').toUpperCase();
                             const peerId = data.userId ?? socket.id;
 
                             if (!Number.isFinite(mentoringId)) {
