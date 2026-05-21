@@ -363,7 +363,7 @@ export class MediaSoupOrchestrator {
         const room = this.rooms.get(Number(mentoringId));
         if (!room) return;
         for (const peer of room.peers.values()) {
-            if (peer.role !== 'mentee') continue;
+            if (peer.role !== 'MENTEE') continue;
             if (exceptUserId && String(peer.userId) === String(exceptUserId)) continue; //제외
             for (const consumer of peer.consumers.values()) {
                 await consumer.pause();
@@ -375,7 +375,7 @@ export class MediaSoupOrchestrator {
         const room = this.rooms.get(Number(mentoringId));
         if (!room) return;
         for (const peer of room.peers.values()) {
-            if (peer.role !== 'mentee') continue;
+            if (peer.role !== 'MENTEE') continue;
             for (const consumer of peer.consumers.values()) {
                 await consumer.resume();
             }
