@@ -1,11 +1,13 @@
 import 'dotenv/config'
 import express from 'express';
+import cors from 'cors';
 import sttRouter from './routes/stt.js'
 import ttsRouter from './routes/tts.js'
 
 const app = express();
 const PORT = process.env.STT_SERVICE_PORT || 4004;
 
+app.use(cors());
 app.use(express.json());
 app.use("/stt", sttRouter);
 app.use("/tts", ttsRouter);
