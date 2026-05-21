@@ -198,6 +198,7 @@ export class RtpForwarder {
 
         const wav = toWav(state.pendingPcm);
         const sessionOffset = state.lastSpeechStartSec;
+        const endTimeSec = state.lastSilenceStartSec ?? (state.pcmByteOffset + state.lastCutByte) / PCM_BYTES_PER_SEC;
         state.chunkIndex++;
         state.pendingPcm = Buffer.alloc(0);
 
@@ -206,11 +207,11 @@ export class RtpForwarder {
         state.pcmBuffer = state.pcmBuffer.slice(state.lastCutByte);
         state.lastCutByte = 0;
 
-        this._sendChunk(state, wav, sessionOffset)
+        this._sendChunk(state, wav, sessionOffset, endTimeSec)
             .catch((e) => console.error('[RtpForwarder] STT 전송 실패', e.message));
     }
 
-    async _sendChunk(state, wav, sessionOffset) {
+    async _sendChunk(state, wav, sessionOffset, endTimeSec) {
         console.log('[RTP] STT 전송 중, mentoringId:', state.mentoringId, 'chunkIndex:', state.chunkIndex, 'wav size:', wav.length);
         const form = new FormData();
         form.append('audio', wav, {
@@ -221,6 +222,8 @@ export class RtpForwarder {
         form.append('mentoringId', String(state.mentoringId));
         form.append('chunkIndex', String(state.chunkIndex));
         form.append('sessionOffset', String(sessionOffset));
+        form.append('startTime', String(sessionOffset));
+        form.append('endTime', String(endTimeSec));
 
         await fetch(`${this.sttServiceUrl}/stt/chunk`, { method: 'POST', body: form });
     }
