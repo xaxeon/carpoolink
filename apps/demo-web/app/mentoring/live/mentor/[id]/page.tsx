@@ -295,6 +295,17 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             
             setIsReading(true);
             console.log(`✅ [API 성공] 질문 상태가 ANSWERING으로 변경됨:`, res.data);
+
+            // API가 방금 응답해준 확실한 데이터를 바로 꺼내서 읽음
+            const questionText = res.data?.question?.content;
+            
+            if (questionText) {
+                // 백그라운드에서 오디오 재생 함수 실행
+                playQuestionAudio(questionText);
+            } else {
+                console.error("❌ 질문 텍스트를 찾을 수 없어 TTS를 실행하지 못했습니다.");
+            }
+
         } catch (err: any) {
             console.error('❌ [API 실패] 질문 읽기 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 확인에 실패했습니다.');
@@ -326,6 +337,45 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         } catch (err: any) {
             console.error('❌ [API 실패] 질문 완료 처리 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 완료 처리에 실패했습니다.');
+        }
+    };
+
+    // TTS API 호출 및 음성 재생 함수
+    const playQuestionAudio = async (text: string) => {
+        try {
+            console.log("🔊 TTS 음성 합성 요청 중...");
+            
+            const TTS_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
+            
+            const response = await fetch(`${TTS_SERVER_URL}/tts/speak`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ text }), // 읽어줄 텍스트 전송
+            });
+
+            if (!response.ok) {
+                throw new Error(`TTS 서버 에러: ${response.status}`);
+            }
+
+            // 오디오 버퍼 데이터를 Blob으로 변환
+            const audioBlob = await response.blob();
+            
+            // Blob 데이터를 브라우저에서 재생할 수 있는 임시 URL로 변환
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // 오디오 객체 생성 및 재생
+            const audio = new window.Audio(audioUrl);
+            audio.play().catch((e) => console.error("오디오 재생 권한 에러:", e));
+            
+            // 재생이 끝나면 메모리 누수를 막기 위해 URL 해제
+            audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+            };
+
+        } catch (error) {
+            console.error("❌ TTS 재생 실패:", error);
         }
     };
 
