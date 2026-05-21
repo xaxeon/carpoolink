@@ -59,7 +59,7 @@ export default function LiveMentoringPage() {
                 setUserId(parsedUserId);
 
                 try {
-                    await apiClient.post(`/mentorings/${mentoringId}/join`);
+                    await apiClient.post(`/api/mentorings/${mentoringId}/join`);
 
                     // 성공 시 진짜 방 화면으로 전환
                     setIsReady(true);
@@ -227,7 +227,7 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                 author: m.user?.nickname || m.userName || "익명멘티",
                 senderId: String(m.userId),
                 content: m.content.replace("[유료] ", ""),
-                isQuestion: m.isQuestion, 
+                isQuestion: m.isQuestion,
                 questionId: m.questionId,
             }]);
         });
@@ -419,16 +419,15 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                             <div className="text-gray-400 text-sm animate-pulse">멘토의 영상을 기다리는 중...</div>
                         </div>
                     )}
-                    
+
                     <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
-                    
+
                     {/* 비디오 내부 상단 뱃지(질문 읽기 상태일 때만 노출, 비공개/공개 색상 구분) */}
                     {currentAnsweringQuestion && (
-                        <div className={`absolute top-4 text-[11px] font-bold px-4 py-1.5 rounded-full backdrop-blur-md shadow-md animate-in fade-in duration-300 ${
-                            currentAnsweringQuestion.isPrivate 
-                                ? 'bg-red-600 text-white' 
+                        <div className={`absolute top-4 text-[11px] font-bold px-4 py-1.5 rounded-full backdrop-blur-md shadow-md animate-in fade-in duration-300 ${currentAnsweringQuestion.isPrivate
+                                ? 'bg-red-600 text-white'
                                 : 'bg-[#FFCC00] text-[#1A1A1A]'
-                        }`}>
+                            }`}>
                             <span className="text-xs font-bold tracking-wide">
                                 {currentAnsweringQuestion.isPrivate ? '비공개 질문 답변 중' : '공개 질문 답변 중'}
                             </span>
@@ -476,7 +475,7 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
                                         </div>
-                                        
+
                                         <div className="text-[15px] break-all leading-relaxed text-gray-100">
                                             {chat.content}
                                         </div>
