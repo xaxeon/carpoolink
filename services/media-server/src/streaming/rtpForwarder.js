@@ -16,6 +16,7 @@ function buildSdp(port, rtpParameters) {
         `m=audio ${port} RTP/AVP ${pt}`,
         `a=rtpmap:${pt} opus/48000/2`,
         `a=fmtp:${pt} minptime=10;useinbandfec=1`,
+        'a=rtcp-mux',
         'a=recvonly',
     ].join('\r\n') + '\r\n';
 }
@@ -69,8 +70,9 @@ export class RtpForwarder {
         const consumer = await plainTransport.consume({
             producerId: producer.id,
             rtpCapabilities: router.rtpCapabilities,
-            paused: false,
+            paused: true,
         });
+        await consumer.resume();
 
         const sdpPath = join(tmpdir(), `stt-${producer.id}.sdp`);
         writeFileSync(sdpPath, buildSdp(port, consumer.rtpParameters));
@@ -121,7 +123,7 @@ export class RtpForwarder {
 
         ffmpeg.stderr.on('data', (data) => {
             const text = data.toString();
-            if (!text.includes('silence_')) console.log('[FFmpeg]', text.trim()); // silence 이벤트 외 모두 출력
+            if (text.includes('Error') || text.includes('error')) console.log('[FFmpeg]', text.trim()); // error만 출력
 
             for (const startMatch of text.matchAll(/silence_start:\s*([\d.]+)/g)) {
                 const silenceStartSec = parseFloat(startMatch[1]);
@@ -167,7 +169,7 @@ export class RtpForwarder {
             }
         });
 
-        ffmpeg.on('close', () => {
+        ffmpeg.on('close', (code) => {
             // 세션 종료 시 남은 발화 flush
             console.log('[RtpForwarder] FFmpeg 종료, code:', code, 'pcmBuffer:', state.pcmBuffer.length, 'bytes');
             const remaining = state.pcmBuffer.slice(state.lastCutByte);
@@ -209,6 +211,7 @@ export class RtpForwarder {
     }
 
     async _sendChunk(state, wav, sessionOffset) {
+        console.log('[RTP] STT 전송 중, mentoringId:', state.mentoringId, 'chunkIndex:', state.chunkIndex, 'wav size:', wav.length);
         const form = new FormData();
         form.append('audio', wav, {
             filename: `chunk_${state.chunkIndex}.wav`,
