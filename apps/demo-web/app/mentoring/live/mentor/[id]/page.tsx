@@ -116,7 +116,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             avatar: q.isPaid ? "💎" : "👤",
                             content: q.content,
                             status: q.status,
-                            answerer: q.answerer 
+                            answerer: q.answerer
                         }));
                     setQuestions(mappedQuestions);
                 }
@@ -227,7 +227,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 author: m.user?.nickname || m.userName || "익명멘티",
                 senderId: String(m.userId),
                 content: m.content.replace("[유료] ", ""),
-                isQuestion: m.isQuestion, 
+                isQuestion: m.isQuestion,
                 questionId: m.questionId,
             })) as ChatMessage[];
             setChats(mapped);
@@ -274,7 +274,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
     // 다음 질문/답변 완료 버튼 로직
     const handleNextQuestion = () => {
-    // questionQueue의 범위를 벗어나지 않도록 안전하게 인덱스 증가
+        // questionQueue의 범위를 벗어나지 않도록 안전하게 인덱스 증가
         if (currentIdx < questionQueue.length) {
             setCurrentIdx((prev) => prev + 1); // 인덱스를 올려 다음 질문으로 이동 (끝에 도달 시 빈 카드 노출)
             setIsReading(false); // 새로운 질문을 읽기 위해 기존 읽기 상태 초기화
@@ -290,15 +290,15 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
         try {
             console.log(`🚀 [API 요청] 질문 읽기 시작 (ID: ${questionId})`);
-            
+
             const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`);
-            
+
             setIsReading(true);
             console.log(`✅ [API 성공] 질문 상태가 ANSWERING으로 변경됨:`, res.data);
 
             // API가 방금 응답해준 확실한 데이터를 바로 꺼내서 읽음
             const questionText = res.data?.question?.content;
-            
+
             if (questionText) {
                 // 백그라운드에서 오디오 재생 함수 실행
                 playQuestionAudio(questionText);
@@ -321,18 +321,18 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
         try {
             console.log(`🚀 [API 요청] 질문 완료 처리 시작 (ID: ${questionId})`);
-            
+
             // 백엔드는 status가 'ANSWERING'일 때만 완료(complete)를 허락.
             // 만약 멘토가 '질문 읽기'를 누르지 않고 바로 '답변 완료'를 눌렀을 경우를 대비해, 
             // acknowledge를 강제로 한 번 찔러주고(에러는 무시) 바로 complete를 요청하도록 함.
-            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`).catch(() => {});
+            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`).catch(() => { });
             const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
-            
+
             setIsReading(false);
-            setCurrentIdx(0); 
+            setCurrentIdx(0);
             setCompletedIds((prev) => [...prev, questionId]);
             setQuestions((prev) => prev.filter(q => q.id !== questionId));
-            
+
             console.log(`✅ [API 성공] 질문 상태가 COMPLETED로 변경됨:`, res.data);
         } catch (err: any) {
             console.error('❌ [API 실패] 질문 완료 처리 에러:', err.response?.data || err);
@@ -344,10 +344,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const playQuestionAudio = async (text: string) => {
         try {
             console.log("🔊 TTS 음성 합성 요청 중...");
-            
+
             const TTS_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
-            
-            const response = await fetch(`${TTS_SERVER_URL}/tts/speak`, {
+
+            const response = await fetch(`${TTS_SERVER_URL}/audio/tts/speak`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -361,14 +361,14 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
             // 오디오 버퍼 데이터를 Blob으로 변환
             const audioBlob = await response.blob();
-            
+
             // Blob 데이터를 브라우저에서 재생할 수 있는 임시 URL로 변환
             const audioUrl = URL.createObjectURL(audioBlob);
-            
+
             // 오디오 객체 생성 및 재생
             const audio = new window.Audio(audioUrl);
             audio.play().catch((e) => console.error("오디오 재생 권한 에러:", e));
-            
+
             // 재생이 끝나면 메모리 누수를 막기 위해 URL 해제
             audio.onended = () => {
                 URL.revokeObjectURL(audioUrl);
@@ -438,7 +438,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             <div className="flex-1 flex flex-col px-4 overflow-hidden relative">
                 {/* 상단 영역: 질문 카드 + 비디오 화면 */}
                 <div className={`flex flex-col transition-all duration-500 ${!isChatOpen ? 'flex-1 justify-center' : 'justify-start pt-2'}`}>
-                    
+
                     {/* 질문 카드 영역 */}
                     {isLoadingQuestions ? (
                         // 1. 로딩 중 상태
@@ -471,17 +471,17 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             {/* 질문 카드 우측 버튼 영역 */}
                             <div className="flex flex-col gap-2 shrink-0 justify-center">
                                 {/* onClick에 acknowledgeQuestion(답변 시작) 함수 연결 */}
-                                <button 
-                                    onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))} 
+                                <button
+                                    onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))}
                                     className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
                                 >
                                     <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
                                     {isReading ? '읽는 중...' : '질문 읽기'}
                                 </button>
-                                
+
                                 {/* onClick에 completeQuestion(답변 완료) 함수 연결 */}
-                                <button 
-                                    onClick={() => completeQuestion(Number(currentQuestion?.id))} 
+                                <button
+                                    onClick={() => completeQuestion(Number(currentQuestion?.id))}
                                     className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
                                 >
                                     답변 완료
@@ -539,7 +539,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 {isChatOpen && (
                     <div className="flex-1 flex flex-col mt-4 animate-in fade-in slide-in-from-bottom-8 duration-500 overflow-hidden">
                         <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pb-6 pr-2">
-                            
+
                             {/* 유료 질문을 제외한 순수 채팅 개수만 체크 */}
                             {chats.filter((chat) => chat.type !== 'paid').length === 0 ? (
                                 <div className="h-full flex items-center justify-center text-gray-500 text-sm">
@@ -551,16 +551,16 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                     .filter((chat) => chat.type !== 'paid')
                                     .map((chat) => (
                                         <div key={chat.id} className="flex gap-3">
-                                            <img 
-                                                src="/images/mentee_profile.jpg" 
+                                            <img
+                                                src="/images/mentee_profile.jpg"
                                                 alt={`${chat.author} 프로필`}
-                                                className="w-9 h-9 rounded-full border-2 border-[#FFCC00] shrink-0 object-cover bg-gray-800" 
+                                                className="w-9 h-9 rounded-full border-2 border-[#FFCC00] shrink-0 object-cover bg-gray-800"
                                             />
-                                            <div className="flex flex-col items-start w-full"> 
+                                            <div className="flex flex-col items-start w-full">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="text-sm font-semibold text-gray-400">{chat.author}</span>
                                                 </div>
-                                                
+
                                                 <div className="text-[15px] leading-relaxed break-all text-gray-100">
                                                     {chat.content}
                                                 </div>

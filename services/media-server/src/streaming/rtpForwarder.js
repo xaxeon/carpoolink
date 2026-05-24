@@ -225,7 +225,7 @@ export class RtpForwarder {
         form.append('startTime', String(sessionOffset));
         form.append('endTime', String(endTimeSec));
 
-        await fetch(`${this.sttServiceUrl}/stt/chunk`, { method: 'POST', body: form });
+        await fetch(`${this.sttServiceUrl}/audio/stt/chunk`, { method: 'POST', body: form });
     }
 
     stop(producerId) {
