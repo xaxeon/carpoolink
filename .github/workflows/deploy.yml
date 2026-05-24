@@ -257,6 +257,7 @@ jobs:
                     -d --name carpoolink-stt-service \
                     -p 4004:4004 \
                     --network carpoolink-network \
+                    --add-host=host.docker.internal:host-gateway \
                     --env-file /app/.env \
                     ghcr.io/${{ env.REPO_OWNER }}/stt-service:${{ github.sha }}
                   ;;

@@ -187,7 +187,7 @@ app.post('/mentorings/:mentoringId/end', async (req, res) => {
 
         // stt-service private 상태 정리
         const STT_SERVICE_URL = process.env.STT_SERVICE_URL || 'http://localhost:4004';
-        fetch(`${STT_SERVICE_URL}/stt/session/${mentoringId}/end`, { method: 'POST' })
+        fetch(`${STT_SERVICE_URL}/audio/stt/session/${mentoringId}/end`, { method: 'POST' })
             .catch((e) => console.error('[mentorings/end] stt session 정리 실패', e.message));
 
         return res.json({ mentoring });
