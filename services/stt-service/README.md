@@ -31,4 +31,4 @@ curl.exe -X POST http://localhost:4004/stt/chunk \
 
 ## HTTP API
 
-모든 경로 앞에 `/stt`를 붙여 사용합니다.
+모든 경로 앞에 `/audio`를 붙여 사용합니다.
