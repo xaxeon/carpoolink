@@ -16,6 +16,7 @@ function buildSdp(port, rtpParameters) {
         `m=audio ${port} RTP/AVP ${pt}`,
         `a=rtpmap:${pt} opus/48000/2`,
         `a=fmtp:${pt} minptime=10;useinbandfec=1`,
+        'a=rtcp-mux',
         'a=recvonly',
     ].join('\r\n') + '\r\n';
 }
@@ -57,6 +58,7 @@ export class RtpForwarder {
 
     async start({ router, producer, mentoringId, userId }) {
         const port = this._allocPort();
+        console.log('[RtpForwarder] starting, port:', port, 'producer:', producer.id);
 
         const plainTransport = await router.createPlainTransport({
             listenIp: { ip: '127.0.0.1', announcedIp: null },
@@ -68,8 +70,9 @@ export class RtpForwarder {
         const consumer = await plainTransport.consume({
             producerId: producer.id,
             rtpCapabilities: router.rtpCapabilities,
-            paused: false,
+            paused: true,
         });
+        await consumer.resume();
 
         const sdpPath = join(tmpdir(), `stt-${producer.id}.sdp`);
         writeFileSync(sdpPath, buildSdp(port, consumer.rtpParameters));
@@ -105,6 +108,7 @@ export class RtpForwarder {
         const MAX_PENDING_BYTES = 25 * PCM_BYTES_PER_SEC;
 
         ffmpeg.stdout.on('data', (chunk) => {
+            if (state.pcmBuffer.length === 0) console.log('[RtpForwarder] 첫 오디오 수신, size:', chunk.length);
             state.pcmBuffer = Buffer.concat([state.pcmBuffer, chunk]);
 
             // 침묵 없이 연속 발화 시, 미처리 구간이 최대치 초과하면 강제 flush
@@ -119,6 +123,7 @@ export class RtpForwarder {
 
         ffmpeg.stderr.on('data', (data) => {
             const text = data.toString();
+            if (text.includes('Error') || text.includes('error')) console.log('[FFmpeg]', text.trim()); // error만 출력
 
             for (const startMatch of text.matchAll(/silence_start:\s*([\d.]+)/g)) {
                 const silenceStartSec = parseFloat(startMatch[1]);
@@ -130,11 +135,8 @@ export class RtpForwarder {
 
                 // 이미 처리된 구간의 stale 이벤트 무시
                 if (relEndByte <= state.lastCutByte) {
-                    state.lastSilenceStartSec = silenceStartSec;
                     return;
                 }
-
-                state.lastCutByte = relEndByte;
 
                 const speechPcm = state.pcmBuffer.slice(state.lastCutByte, relEndByte);
                 if (speechPcm.length > 0) {
@@ -150,12 +152,16 @@ export class RtpForwarder {
 
             for (const endMatch of text.matchAll(/silence_end:\s*([\d.]+)/g)) {
                 const silenceEndSec = parseFloat(endMatch[1]);
-                const silenceDuration = state.lastSilenceStartSec !== null
-                    ? silenceEndSec - state.lastSilenceStartSec
-                    : 0;
 
                 const absEndByte = Math.floor(silenceEndSec * PCM_BYTES_PER_SEC);
-                state.lastCutByte = absEndByte - state.pcmByteOffset;
+                const relEndByte = absEndByte - state.pcmByteOffset;
+
+                if (relEndByte <= state.lastCutByte) {
+                    state.lastSpeechStartSec = silenceEndSec;
+                    return;
+                }
+
+                state.lastCutByte = relEndByte;
                 state.lastSpeechStartSec = silenceEndSec;
 
                 this._flushPending(state);
@@ -163,8 +169,9 @@ export class RtpForwarder {
             }
         });
 
-        ffmpeg.on('close', () => {
+        ffmpeg.on('close', (code) => {
             // 세션 종료 시 남은 발화 flush
+            console.log('[RtpForwarder] FFmpeg 종료, code:', code, 'pcmBuffer:', state.pcmBuffer.length, 'bytes');
             const remaining = state.pcmBuffer.slice(state.lastCutByte);
             if (remaining.length > 0) {
                 state.pendingPcm = Buffer.concat([state.pendingPcm, remaining]);
@@ -184,13 +191,14 @@ export class RtpForwarder {
 
     // 누적된 pendingPcm을 STT로 전송하고 pcmBuffer 앞부분을 정리
     _flushPending(state) {
-        if (state.pendingPcm.length < PCM_BYTES_PER_SEC * 0.5) {
+        if (state.pendingPcm.length < PCM_BYTES_PER_SEC * 1.0) {
             state.pendingPcm = Buffer.alloc(0);
             return;
         }
 
         const wav = toWav(state.pendingPcm);
         const sessionOffset = state.lastSpeechStartSec;
+        const endTimeSec = state.lastSilenceStartSec ?? (state.pcmByteOffset + state.lastCutByte) / PCM_BYTES_PER_SEC;
         state.chunkIndex++;
         state.pendingPcm = Buffer.alloc(0);
 
@@ -199,11 +207,12 @@ export class RtpForwarder {
         state.pcmBuffer = state.pcmBuffer.slice(state.lastCutByte);
         state.lastCutByte = 0;
 
-        this._sendChunk(state, wav, sessionOffset)
+        this._sendChunk(state, wav, sessionOffset, endTimeSec)
             .catch((e) => console.error('[RtpForwarder] STT 전송 실패', e.message));
     }
 
-    async _sendChunk(state, wav, sessionOffset) {
+    async _sendChunk(state, wav, sessionOffset, endTimeSec) {
+        console.log('[RTP] STT 전송 중, mentoringId:', state.mentoringId, 'chunkIndex:', state.chunkIndex, 'wav size:', wav.length);
         const form = new FormData();
         form.append('audio', wav, {
             filename: `chunk_${state.chunkIndex}.wav`,
@@ -213,6 +222,8 @@ export class RtpForwarder {
         form.append('mentoringId', String(state.mentoringId));
         form.append('chunkIndex', String(state.chunkIndex));
         form.append('sessionOffset', String(sessionOffset));
+        form.append('startTime', String(sessionOffset));
+        form.append('endTime', String(endTimeSec));
 
         await fetch(`${this.sttServiceUrl}/stt/chunk`, { method: 'POST', body: form });
     }

@@ -7,6 +7,16 @@ import { prisma } from "@carpoolink/database";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() }); // 파일을 메모리에 임시 저장
+const MEDIA_SERVER_URL = process.env.MEDIA_SERVER_URL || 'http://localhost:4002';
+
+const COMMANDS = [
+  { keywords: ['질문 읽어'], type: 'READ_QUESTION' },
+  { keywords: ['다음 질문'], type: 'READ_QUESTION' },
+  { keywords: ['비공개', '완료'], type: 'END_PRIVATE' },
+  { keywords: ['비공개', '답변'], type: 'START_PRIVATE' },
+];
+
+const privateState = new Map();
 
 /*
 POST /stt/chunk
@@ -37,6 +47,22 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
     // 1. Whisper STT
     const text = await transcribeAudio(audioFile);
 
+    const commandType = detectCommand(text);
+    if (commandType) {
+      console.log(`[COMMAND] ${commandType} - "${text}"`);
+      fetch(`${MEDIA_SERVER_URL}/commands/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: commandType, mentoringId, userId }),
+      }).catch((e) => console.error('[COMMAND] 전송 실패', e.message));
+    }
+
+    if (commandType === 'START_PRIVATE')
+      privateState.set(String(mentoringId), true);
+    const isPrivate = privateState.get(String(mentoringId)) ?? false;
+    if (commandType === 'END_PRIVATE')
+      privateState.set(String(mentoringId), false);
+
     // 2. DB 저장
     const saved = await saveScript(
       {
@@ -45,6 +71,7 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
         startTime: startTime ? parseFloat(startTime) : undefined,
         endTime: endTime ? parseFloat(endTime) : undefined,
         sessionOffset: sessionOffset ? parseFloat(sessionOffset) : undefined,
+        isPrivate,
       },
       {
         userId,
@@ -56,6 +83,7 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
       scriptId: saved.scriptId.toString(),
       text,
       chunkIndex: parseInt(chunkIndex),
+      ...(commandType && { command: commandType }),
     });
   } catch (err) {
     console.error("[STT ERROR]", err);
@@ -84,8 +112,8 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
     // 발화자 userId 결정(1:N인 경우 멘토로 고정)
     const speakerUserId = mentoring.isGroup ? mentoring.userId.toString() : userId;
 
-    // 현재 비공개 질문/답변 여부는 false로 기본값 설정. 질문 관리 상태를 먼저 알아야 함
-    const isPrivate = false;
+    // 비공개 질문에 대한 답변 시 isPrivate 설정
+    const isPrivate = privateState.get(String(mentoringId)) ?? false;
 
     // 1. 청크 분할
     const chunks = await splitAudioIntoChunks(req.file.buffer, req.file.mimetype);
@@ -135,5 +163,18 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
   }
 });
 
+function detectCommand(text) {
+  for (const cmd of COMMANDS) {
+    if (cmd.keywords.every(k => text.includes(k)))
+      return cmd.type;
+  }
+  return null;
+}
+
+router.post('/session/:mentoringId/end', (req, res) => {
+  privateState.delete(String(req.params.mentoringId));
+  console.log('[STT] 세션 정리됨:', req.params.mentoringId, '| 남은 세션:', privateState.size);
+  res.json({ ok: true });
+})
 
 export default router;

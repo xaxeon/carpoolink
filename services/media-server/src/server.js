@@ -2,6 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
+import { prisma } from '@carpoolink/database';
 import { createMentoringRepository } from './store/mentoringRepository.js';
 import { AudioPipelineManager } from './streaming/audioPipeline.js';
 import { MediaSoupOrchestrator } from './streaming/mediaSoupOrchestrator.js';
@@ -184,6 +185,11 @@ app.post('/mentorings/:mentoringId/end', async (req, res) => {
         const mentoring = await mentoringRepository.endMentoring(mentoringId);
         await mediaOrchestrator.closeRoom(mentoringId);
 
+        // stt-service private 상태 정리
+        const STT_SERVICE_URL = process.env.STT_SERVICE_URL || 'http://localhost:4004';
+        fetch(`${STT_SERVICE_URL}/stt/session/${mentoringId}/end`, { method: 'POST' })
+            .catch((e) => console.error('[mentorings/end] stt session 정리 실패', e.message));
+
         return res.json({ mentoring });
     } catch (error) {
         console.error('[mentoring/end] failed', error);
@@ -217,6 +223,46 @@ app.get('/mentorings/:mentoringId', async (req, res) => {
         return res.status(500).json({
             message: '멘토링 세션을 조회하는 데 실패했습니다'
         });
+    }
+});
+
+app.post('/commands/execute', async (req, res) => {
+    try {
+        const { type, mentoringId } = req.body;
+        const room = mediaOrchestrator.rooms.get(Number(mentoringId));
+
+        if (!room) return res.status(404).json({ message: '멘토링 room을 찾을 수 없습니다' });
+
+        switch (type) {
+            case 'READ_QUESTION': {
+                const mentor = [...room.peers.values()].find(p => p.role === 'MENTOR');
+                mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
+                break;
+            }
+            case 'START_PRIVATE': {
+                const privateQuestion = await prisma.question.findFirst({
+                    where: { mentoringId: BigInt(mentoringId), isPrivate: true, status: 'ANSWERING' },
+                    select: { userId: true },
+                });
+                const targetUserId = privateQuestion?.userId?.toString() ?? null;
+                await mediaOrchestrator.pauseMenteeConsumers(mentoringId, targetUserId);
+                for (const peer of room.peers.values()) {
+                    peer.socket.emit('signal', { event: 'voice-command', data: { type } });
+                }
+                break;
+            }
+            case 'END_PRIVATE': {
+                await mediaOrchestrator.resumeMenteeConsumers(mentoringId);
+                for (const peer of room.peers.values()) {
+                    peer.socket.emit('signal', { event: 'voice-command', data: { type } });
+                }
+                break;
+            }
+        }
+
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ message: e.message });
     }
 });
 

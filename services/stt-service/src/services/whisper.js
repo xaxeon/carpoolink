@@ -13,6 +13,7 @@ export async function transcribeAudio(audioStream) {
     file: audioStream,
     model: "gpt-4o-transcribe",
     language: "ko",
+    temperature: 0,
   });
   return transcription.text;
 }

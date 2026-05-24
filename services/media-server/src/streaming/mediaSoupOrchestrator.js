@@ -359,6 +359,29 @@ export class MediaSoupOrchestrator {
         await consumer.resume();
     }
 
+    async pauseMenteeConsumers(mentoringId, exceptUserId = null) {
+        const room = this.rooms.get(Number(mentoringId));
+        if (!room) return;
+        for (const peer of room.peers.values()) {
+            if (peer.role !== 'MENTEE') continue;
+            if (exceptUserId && String(peer.userId) === String(exceptUserId)) continue; //제외
+            for (const consumer of peer.consumers.values()) {
+                await consumer.pause();
+            }
+        }
+    }
+
+    async resumeMenteeConsumers(mentoringId) {
+        const room = this.rooms.get(Number(mentoringId));
+        if (!room) return;
+        for (const peer of room.peers.values()) {
+            if (peer.role !== 'MENTEE') continue;
+            for (const consumer of peer.consumers.values()) {
+                await consumer.resume();
+            }
+        }
+    }
+
     // mentoringId에 해당하는 방에서 특정 피어를 완전히 제거하는 메서드, 해당 피어의 모든 트랜스포트, 프로듀서, 소비자를 닫고 방에서 제거함
     removePeer({ mentoringId, peerId }) {
         const room = this.rooms.get(Number(mentoringId));
