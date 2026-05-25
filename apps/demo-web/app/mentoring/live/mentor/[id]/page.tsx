@@ -19,6 +19,7 @@ interface Question {
     content: string;
     status?: string;
     answerer?: { userId: number; nickname: string } | null;
+    clusterSize?: number; // 💡 추가: 묶인 질문의 개수
 }
 
 interface ChatMessage {
@@ -82,6 +83,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
     const [completedIds, setCompletedIds] = useState<number[]>([]);
 
+    // 💡 [추가] 클러스터링된 결과를 저장할 상태
+    const [clusters, setClusters] = useState<any[]>([]);
+    const [isClustering, setIsClustering] = useState(false);
+
     // 이제 이 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
     const mentoringOptions = useMemo(() => ({ role, userId }), [role, userId]);
     const { sessionData, isConnected, peerId, socket, endMentoring, isLoading, error } = useMentoringSession(mentoringOptions);
@@ -130,20 +135,86 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         fetchQuestions();
     }, [mentoringId]);
 
-    // [질문 큐 생성] 검증된 questions 상태(DB + 질문 소켓 이벤트)만 사용하여 정렬.
-    const questionQueue = useMemo(() => {
+    // 💡 [추가] 완료되지 않은(활성화된) 질문들만 추출
+    const activeQuestions = useMemo(() => {
         const completedStringIds = completedIds.map(id => String(id));
-
-        // 1. 이미 완료 처리된 질문 ID는 한 번 더 확실하게 필터링합니다.
-        const activeQuestions = questions.filter(q => !completedStringIds.includes(String(q.id)));
-
-        // 2. 유료 질문 최우선 정렬 로직
-        const paidQuestions = activeQuestions.filter(q => q.isPaid);
-        const freeQuestions = activeQuestions.filter(q => !q.isPaid);
-
-        // 3. 유료 질문이 무조건 앞에 오고, 일반 질문이 뒤에 오도록 합쳐서 반환.
-        return [...paidQuestions, ...freeQuestions];
+        return questions.filter(q => !completedStringIds.includes(String(q.id)));
     }, [questions, completedIds]);
+
+    // 💡 [추가] 활성화된 질문이 바뀔 때마다 클러스터링 API 호출 (1초 디바운스 적용)
+    useEffect(() => {
+        if (activeQuestions.length === 0) {
+            setClusters([]);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setIsClustering(true);
+            try {
+                // question-service의 주소 (환경변수 설정 전이면 4003 포트 하드코딩)
+                const QUESTION_SERVICE_URL = process.env.NEXT_PUBLIC_QUESTION_SERVICE_URL || "http://localhost:4003";
+                
+                const response = await fetch(`${QUESTION_SERVICE_URL}/api/question-clustering/cluster`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        // API 스펙에 맞게 데이터 변환
+                        questions: activeQuestions.map(q => ({
+                            id: String(q.id),
+                            text: q.content,
+                            isPaid: q.isPaid
+                        }))
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // 🚨 이 로그를 반드시 확인해보세요!
+                    console.log("🤖 AI 클러스터링 결과:", data.clusters);
+                    
+                    setClusters(data.clusters || []);
+                }
+            } catch (error) {
+                console.error("클러스터링 API 호출 에러:", error);
+            } finally {
+                setIsClustering(false);
+            }
+        }, 1000); // 1초 대기 후 호출하여 서버 부하 방지
+
+        return () => clearTimeout(timer);
+    }, [activeQuestions]);
+
+    // [질문 큐 생성] 검증된 questions 상태(DB + 질문 소켓 이벤트)만 사용하여 정렬.
+    // 💡 [수정] 클러스터링 결과를 바탕으로 큐를 생성합니다.
+    const questionQueue = useMemo(() => {
+        // 아직 클러스터링이 완료되지 않았거나 에러가 났다면 원본을 임시로 보여줍니다.
+        if (clusters.length === 0 && activeQuestions.length > 0) {
+            const paid = activeQuestions.filter(q => q.isPaid);
+            const free = activeQuestions.filter(q => !q.isPaid);
+            return [...paid, ...free];
+        }
+
+        // 클러스터 결과를 순회하며 화면에 띄울 대표 질문 객체를 만듭니다.
+        const mappedQueue = clusters.map(cluster => {
+            const repId = Number(cluster.representative_question_id);
+            // 원본 질문에서 작성자 정보 등을 가져옵니다.
+            const originalQ = activeQuestions.find(q => q.id === repId) || activeQuestions[0];
+
+            return {
+                ...originalQ,
+                id: repId,
+                content: cluster.representative_question, // AI가 다듬은 대표 질문 텍스트
+                clusterSize: cluster.member_questions?.length || 1, // 묶인 질문 개수
+            } as Question;
+        });
+
+        // 1. 유료 질문이 포함된 클러스터 최우선, 2. 일반 클러스터 순으로 정렬
+        const paidQuestions = mappedQueue.filter(q => q.isPaid);
+        const freeQuestions = mappedQueue.filter(q => !q.isPaid);
+
+        return [...paidQuestions, ...freeQuestions];
+    }, [clusters, activeQuestions]);
 
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
     const currentQuestion = questionQueue[currentIdx];
@@ -459,6 +530,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                         <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1">
                                             {currentIdx + 1} / {questionQueue.length}
                                         </span>
+
+                                        {/* 비슷한 질문 묶음 크기 표시 뱃지 */}
+                                        {currentQuestion?.clusterSize && currentQuestion.clusterSize > 1 && (
+                                            <span className="text-[11px] font-extrabold bg-blue-100 text-blue-700 px-2 py-1 rounded-md border border-blue-200 flex items-center shadow-sm ml-1">
+                                                🔥 +{currentQuestion.clusterSize - 1}
+                                            </span>
+                                        )}
                                     </div>
                                     {currentQuestion?.isPrivate && (
                                         <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
