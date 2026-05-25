@@ -163,6 +163,89 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
   }
 });
 
+// stt-service/routes/stt.js 내부의 GET 엔드포인트 수정
+router.get("/mentoring/:mentoringId", async (req, res) => {
+  try {
+    const { mentoringId } = req.params;
+    console.log(`[🔍 STT 조회 최종 가동] mentoringId: ${mentoringId}`);
+
+    // 1. 멘토링 정보 기본 조회
+    const mentoring = await prisma.mentoring.findUnique({
+      where: { mentoringId: BigInt(mentoringId) },
+    });
+
+    // 2. Script를 가져올 때 해당 스크립트를 말한 User 테이블 정보(nickname, role)를 직접 관계 조인(include)합니다.
+    const scripts = await prisma.script.findMany({
+      where: { mentoringId: BigInt(mentoringId) },
+      include: {
+        user: true // 데이터베이스 상의 실제 유저 정보를 그대로 가져옵니다.
+      },
+      orderBy: { scriptId: "asc" } 
+    });
+
+    console.log(`[📊 DB 조회 성공] 실제 데이터 ${scripts.length}개를 정규화 변환합니다.`);
+
+    // 3. 프론트엔드 page.tsx 완벽 호환 구조 변환
+    const serializedScripts = scripts.map(s => {
+      let textVal = "";
+      let startTimeVal = null;
+
+      // content 내장 JSON 오브젝트 안전 파싱
+      if (s.content && typeof s.content === 'object') {
+        textVal = s.content.text || "";
+        startTimeVal = s.content.startTime ?? s.content.timestamp ?? null;
+      } else if (typeof s.content === 'string') {
+        try {
+          const parsed = JSON.parse(s.content);
+          textVal = parsed.text || "";
+          startTimeVal = parsed.startTime ?? null;
+        } catch (e) {
+          textVal = s.content;
+        }
+      }
+
+      // DB에 실존하는 유저의 실제 nickname과 role을 추출하고, 없을 경우에만 예외 기본값을 부여합니다.
+      const realNickname = s.user?.nickname || "알 수 없음";
+      const realRole = s.user?.role || "MENTEE"; 
+
+      return {
+        scriptId: s.scriptId.toString(),
+        userId: s.userId.toString(),
+        mentoringId: s.mentoringId.toString(),
+        isPrivate: s.isPrivate || false,
+        isMasked: s.isMasked || false,
+        content: {
+          text: textVal,
+          startTime: startTimeVal,
+          chunkIndex: s.content?.chunkIndex || 0
+        },
+        // core-api 규격과 100% 일치하도록 user 객체 포맷 매핑
+        user: {
+          nickname: realNickname,
+          role: realRole // 이제 "MENTOR"가 정상적으로 전달됩니다.
+        }
+      };
+    });
+
+    return res.json({
+      success: true,
+      mentoring: {
+        mentoringId: mentoring ? mentoring.mentoringId.toString() : mentoringId,
+        title: mentoring?.title || "라이브 멘토링 스크립트",
+        startedAt: mentoring?.startedAt || new Date().toISOString()
+      },
+      scripts: serializedScripts
+    });
+
+  } catch (err) {
+    console.error("🚨 [STT 서비스 최종 핸들러 크래시]:", err);
+    return res.status(500).json({ 
+      success: false, 
+      error: err.message 
+    });
+  }
+});
+
 function detectCommand(text) {
   for (const cmd of COMMANDS) {
     if (cmd.keywords.every(k => text.includes(k)))
