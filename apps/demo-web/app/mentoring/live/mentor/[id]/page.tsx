@@ -152,9 +152,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             setIsClustering(true);
             try {
                 // question-service의 주소 (환경변수 설정 전이면 4003 포트 하드코딩)
-                const QUESTION_SERVICE_URL = process.env.NEXT_PUBLIC_QUESTION_SERVICE_URL || "http://localhost:4003";
+                const QUESTION_SERVICE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4003";
                 
-                const response = await fetch(`${QUESTION_SERVICE_URL}/api/question-clustering/cluster`, {
+                const response = await fetch(`${QUESTION_SERVICE_URL}/question/api/question-clustering/cluster`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
