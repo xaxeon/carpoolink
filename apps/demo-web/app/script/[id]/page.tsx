@@ -21,75 +21,96 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
   const [isLoading, setIsLoading] = useState(true);
   const [isPublishing, setIsPublishing] = useState(false);
 
+  const [scriptList, setScriptList] = useState<any[]>([]);
   const editorRef = useRef<HTMLDivElement>(null);
+
+  // 선언 전에 사용 오류(ts2448)를 방지하기 위해 updateUndoState 함수를 useEffect 위로 이동합니다.
+  const updateUndoState = () => {
+    if (typeof window === "undefined") return;
+    const historyStr = sessionStorage.getItem(`script_history_${id}`);
+    if (!historyStr) {
+      setCanUndo(false);
+      return;
+    }
+    try {
+      const history = JSON.parse(historyStr);
+      setCanUndo(history.length > 0);
+    } catch {
+      setCanUndo(false);
+    }
+  };
 
   // 1. 초기 데이터 로드
   useEffect(() => {
     const fetchScriptData = async () => {
       setIsLoading(true);
       try {
-        const res = await apiClient.get(`/api/scripts/${id}`);
-        const { mentoring, scripts } = res.data;
+        const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
+        const res = await fetch(`${STT_SERVER_URL}/audio/stt/mentoring/${id}`);
+        
+        if (!res.ok) throw new Error(`STT 서비스 응답 실패: ${res.status}`);
+        const resultData = await res.json();
+        
+        const mentoring = resultData?.mentoring;
+        const scripts = resultData?.scripts || [];
 
-        const d = mentoring.startedAt ? new Date(mentoring.startedAt) : null;
+        const d = mentoring?.startedAt ? new Date(mentoring.startedAt) : null;
         const dateStr = d 
           ? `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
           : "날짜 정보 없음";
 
-        setMentoringInfo({ title: mentoring.title, date: dateStr });
+        setMentoringInfo({ title: mentoring?.title || "라이브 멘토링 스크립트", date: dateStr });
+        
+        // DOM에 직접 꽂는 대신 안전하게 React 상태에 담아둡니다.
+        setScriptList(scripts);
 
-        if (editorRef.current) {
-          const htmlContent = scripts.map((s: any) => {
-            const scriptId = s.scriptId;
-            const speakerName = s.speaker?.nickname || "알 수 없음";
-            const isMentor = s.speaker?.isHostMentor;
-            
-            const timestamp = s.content?.timestamp 
-              ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none" contenteditable="false">${s.content.timestamp}</span>` 
-              : "";
-
-            let textHTML = "";
-
-            if (s.content?.isPrivate || s.isPrivate) {
-              textHTML = s.content?.text || "비공개 질문입니다.";
-              return `<div class="mb-4 text-gray-400 italic" contenteditable="false">🔒 <b>[${speakerName}]</b>${timestamp}<br /><span class="inline-block mt-0.5">${textHTML}</span></div>`;
-            }
-
-            if (s.content?.pieces && Array.isArray(s.content.pieces)) {
-              textHTML = s.content.pieces.map((piece: any) => {
-                const escapedText = (piece.text || "").replace(/\n/g, "<br>");
-                if (piece.isMasked) {
-                  return `<span style="background-color: #FFCC00">${escapedText}</span>`;
-                }
-                return escapedText;
-              }).join('');
-            } else {
-              textHTML = (s.content?.text || s.content?.message || "").replace(/\n/g, "<br>");
-              if (s.masked || s.isMasked || s.content?.isMasked) {
-                textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
-              }
-            }
-
-            const nameColor = isMentor ? "#D97706" : "#2563EB"; 
-
-            return `<div class="mb-4 script-block" data-script-id="${scriptId}">
-              <b style="color: ${nameColor};" contenteditable="false">[${speakerName}]</b>${timestamp}<br />
-              <span class="inline-block mt-0.5 script-content">${textHTML}</span>
-            </div>`;
-          }).join('');
-          
-          editorRef.current.innerHTML = htmlContent || "<p class='text-gray-400'>내용을 찾을 수 없습니다.</p>";
-        }
       } catch (error) {
-        console.error("데이터 로드 실패:", error);
+        console.error("🚨 에디터 데이터 로드 실패:", error);
       } finally {
         setIsLoading(false);
-        updateUndoState();
       }
     };
 
     if (id) fetchScriptData();
   }, [id]);
+
+  // 로딩이 끝나고 DOM(editorRef)이 생성된 타이밍을 포착해 데이터를 주입하는 렌더링
+  useEffect(() => {
+    if (!isLoading && editorRef.current && scriptList.length > 0) {
+      const htmlContent = scriptList.map((s: any) => {
+        const scriptId = s.scriptId || String(s.id);
+        const speakerName = s.user?.nickname || "알 수 없음";
+        const isMentor = s.user?.role === "MENTOR";
+        
+        const startTimeVal = s.content?.startTime;
+        const timestamp = startTimeVal !== null && startTimeVal !== undefined
+          ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none" contenteditable="false">${parseFloat(startTimeVal).toFixed(1)}s</span>` 
+          : "";
+
+        const textContent = s.content?.text || s.text || String(s.content || "");
+
+        if (s.isPrivate === true || String(s.isPrivate) === "true") {
+          return `<div class="mb-4 text-gray-400 italic" contenteditable="false">🔒 <b>[${speakerName}]</b>${timestamp}<br /><span class="inline-block mt-0.5">비공개 구간 질문 및 답변입니다.</span></div>`;
+        }
+
+        let textHTML = textContent.replace(/\n/g, "<br>");
+        
+        if (s.isMasked === true || s.content?.isMasked === true) {
+          textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
+        }
+
+        const nameColor = isMentor ? "#D97706" : "#2563EB"; 
+
+        return `<div class="mb-4 script-block" data-script-id="${scriptId}">
+          <b style="color: ${nameColor};" contenteditable="false">[${speakerName}]</b>${timestamp}<br />
+          <span class="inline-block mt-0.5 script-content">${textHTML}</span>
+        </div>`;
+      }).join('');
+
+      editorRef.current.innerHTML = htmlContent;
+      updateUndoState();
+    }
+  }, [isLoading, scriptList]);
 
   // 2. 스크립트 발행 (데이터 수집)
   const handlePublish = async () => {
@@ -180,7 +201,6 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  const updateUndoState = () => setCanUndo(document.queryCommandEnabled('undo'));
   const applyMask = (color: string) => {
     if (editorRef.current) editorRef.current.focus();
     if (!document.execCommand('hiliteColor', false, color)) {
