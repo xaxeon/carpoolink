@@ -9,6 +9,7 @@ import {
     generateQuestionRecommendations,
     QuestionRecommendationError,
 } from './lib/questionRecommendationClient.js';
+import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const app = express();
 const PORT = process.env.QUESTION_SERVICE_PORT || 4003;
 
+app.use(cors());
 app.use(express.json());
 
 app.get('/health', (req, res) => {
