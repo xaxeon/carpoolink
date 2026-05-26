@@ -9,12 +9,14 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
   const router = useRouter();
   const { id } = use(params);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [scriptList, setScriptList] = useState<any[]>([]);
 
   // API 연동 상태 관리
   const [mentoringInfo, setMentoringInfo] = useState<{ title: string; date: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 1. 초기 데이터 페치 (상태값 보관 역할)
   useEffect(() => {
     const fetchScriptData = async () => {
       setIsLoading(true);
@@ -22,7 +24,6 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
         const res = await apiClient.get(`/api/scripts/${id}`);
         const { mentoring, scripts } = res.data;
 
-        // 방어 로직이 적용된 날짜 포맷 변환
         const d = mentoring.startedAt ? new Date(mentoring.startedAt) : null;
         const dateStr = d 
           ? `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`
@@ -33,51 +34,9 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
           date: dateStr,
         });
 
-        if (contentRef.current) {
-          const htmlContent = scripts.map((s: any) => {
-            const speakerName = s.speaker?.nickname || "알 수 없음";
-            const isMentor = s.speaker?.isHostMentor;
+        // DOM을 직접 찌르지 않고 React 상태에 데이터를 안전하게 기록합니다.
+        setScriptList(scripts || []);
 
-            // timestamp 출력 (존재할 경우)
-            const timestamp = s.content?.timestamp 
-              ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none">${s.content.timestamp}</span>` 
-              : "";
-
-            let textHTML = "";
-
-            // [1. 비공개 처리] 백엔드에서 내려준 비공개 메시지 출력
-            if (s.content?.isPrivate || s.isPrivate) {
-              textHTML = s.content?.text || "비공개 질문입니다.";
-              return `<div class="mb-4 text-gray-400 italic">🔒 <b>[${speakerName}]</b>${timestamp}<br /><span class="inline-block mt-0.5">${textHTML}</span></div>`;
-            }
-
-            // [2. 부분 마스킹 배열(pieces) 처리]
-            if (s.content?.pieces && Array.isArray(s.content.pieces)) {
-              textHTML = s.content.pieces.map((piece: any) => {
-                // 백엔드에서 치환된 텍스트('마스킹된 부분입니다.')를 노란색 span으로 감싸기
-                if (piece.isMasked) {
-                  return `<span style="background-color: #FFCC00">${piece.text || "마스킹된 부분입니다."}</span>`;
-                }
-                return piece.text || "";
-              }).join('');
-            } 
-            // [3. 통문장 마스킹 또는 구버전 데이터(message) 호환 처리]
-            else {
-              textHTML = s.content?.text || s.content?.message || "";
-              if (s.masked || s.isMasked || s.content?.isMasked) {
-                textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
-              }
-            }
-
-            // 발화자 구분 가독성을 위해 이름 색상 다르게 지정
-            const nameColor = isMentor ? "#D97706" : "#2563EB"; 
-
-            return `<div class="mb-4"><b style="color: ${nameColor};">[${speakerName}]</b>${timestamp}<br /><span class="inline-block mt-0.5">${textHTML}</span></div>`;
-          }).join('');
-
-          // 스크립트 데이터가 비어있을 경우 방어 코드
-          contentRef.current.innerHTML = htmlContent || "<p class='text-gray-400 text-sm'>대화 내용이 없습니다.</p>";
-        }
       } catch (err) {
         console.error("스크립트 열람 실패:", err);
         setError("스크립트를 불러오는 중 오류가 발생했습니다.");
@@ -90,6 +49,46 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
       fetchScriptData();
     }
   }, [id]);
+
+  // 2. 로딩이 종료되어 contentRef가 확실하게 DOM에 로드된 타이밍에 HTML 주입
+  useEffect(() => {
+    if (!isLoading && contentRef.current && scriptList.length > 0) {
+      const htmlContent = scriptList.map((s: any) => {
+        const timestamp = s.content?.timestamp 
+          ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none">${s.content.timestamp}</span>` 
+          : "";
+
+        let textHTML = "";
+
+        // 비공개 처리 분기
+        if (s.content?.isPrivate || s.isPrivate) {
+          const privateText = s.content?.text || "비공개 질문입니다.";
+          return `<div class="text-gray-400 italic">🔒 <span>${privateText}</span>${timestamp}</div>`;
+        }
+
+        // 부분 마스킹 배열(pieces) 처리
+        if (s.content?.pieces && Array.isArray(s.content.pieces)) {
+          textHTML = s.content.pieces.map((piece: any) => {
+            if (piece.isMasked) {
+              return `<span style="background-color: #FFCC00">${piece.text || "마스킹된 부분입니다."}</span>`;
+            }
+            return piece.text || "";
+          }).join('');
+        } 
+        // 통문장 마스킹 처리
+        else {
+          textHTML = s.content?.text || s.content?.message || "";
+          if (s.masked || s.isMasked || s.content?.isMasked) {
+            textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
+          }
+        }
+
+        return `<div><span>${textHTML}</span>${timestamp}</div>`;
+      }).join('');
+
+      contentRef.current.innerHTML = htmlContent;
+    }
+  }, [isLoading, scriptList]);
 
   return (
     <main className="flex flex-col w-full h-[100dvh] bg-white text-[#1A1A1A] font-sans overflow-hidden relative">

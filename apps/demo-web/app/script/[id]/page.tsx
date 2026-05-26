@@ -74,23 +74,24 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
     if (id) fetchScriptData();
   }, [id]);
 
-  // 로딩이 끝나고 DOM(editorRef)이 생성된 타이밍을 포착해 데이터를 주입하는 렌더링
+  // 2. 렌더링 동기화 용 useEffect
   useEffect(() => {
     if (!isLoading && editorRef.current && scriptList.length > 0) {
       const htmlContent = scriptList.map((s: any) => {
         const scriptId = s.scriptId || String(s.id);
-        const speakerName = s.user?.nickname || "알 수 없음";
-        const isMentor = s.user?.role === "MENTOR";
         
+        // 타임스탬프 문장 뒤에 붙임.
         const startTimeVal = s.content?.startTime;
         const timestamp = startTimeVal !== null && startTimeVal !== undefined
           ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none" contenteditable="false">${parseFloat(startTimeVal).toFixed(1)}s</span>` 
           : "";
 
-        const textContent = s.content?.text || s.text || String(s.content || "");
+        const rawText = s.content?.text || s.text || String(s.content || "");
+        const textContent = rawText.trim(); 
 
+        // 비공개 라벨 처리 분기 (문장 끝에 타임스탬프 배치)
         if (s.isPrivate === true || String(s.isPrivate) === "true") {
-          return `<div class="mb-4 text-gray-400 italic" contenteditable="false">🔒 <b>[${speakerName}]</b>${timestamp}<br /><span class="inline-block mt-0.5">비공개 구간 질문 및 답변입니다.</span></div>`;
+          return `<div class="text-gray-400 italic script-block" data-script-id="${scriptId}" contenteditable="false"><span class="script-content">비공개 구간 질문 및 답변입니다.</span>${timestamp}</div>`;
         }
 
         let textHTML = textContent.replace(/\n/g, "<br>");
@@ -99,12 +100,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
         }
 
-        const nameColor = isMentor ? "#D97706" : "#2563EB"; 
-
-        return `<div class="mb-4 script-block" data-script-id="${scriptId}">
-          <b style="color: ${nameColor};" contenteditable="false">[${speakerName}]</b>${timestamp}<br />
-          <span class="inline-block mt-0.5 script-content">${textHTML}</span>
-        </div>`;
+        return `<div class="script-block" data-script-id="${scriptId}"><span class="script-content">${textHTML}</span>${timestamp}</div>`;
       }).join('');
 
       editorRef.current.innerHTML = htmlContent;
