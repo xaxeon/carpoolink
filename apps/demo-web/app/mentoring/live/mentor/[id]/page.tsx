@@ -746,62 +746,89 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
                     {/* 질문 카드 영역 */}
                     {isLoadingQuestions ? (
-                        // 1. 로딩 중 상태
                         <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-white flex items-center justify-center min-h-[120px]">
                             <div className="w-6 h-6 border-2 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin"></div>
                         </div>
                     ) : currentQuestion ? (
-                        // 2. 대기 중인 질문이 있을 때
-                        <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 transition-all duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
-                            <div className="flex flex-col gap-3 flex-1">
-                                <div className="flex items-center justify-between w-full">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">
-                                            {currentQuestion?.avatar}
-                                        </div>
-                                        <span className="font-bold text-[14px]">{currentQuestion?.author}</span>
-                                        {/* 질문 순서 표시 */}
-                                        <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1">
-                                            {currentIdx + 1} / {questionQueue.length}
-                                        </span>
-
-                                        {/* 비슷한 질문 묶음 크기 표시 뱃지 */}
-                                        {currentQuestion?.clusterSize && currentQuestion.clusterSize > 1 && (
-                                            <span className="text-[11px] font-extrabold bg-blue-100 text-blue-700 px-2 py-1 rounded-md border border-blue-200 flex items-center shadow-sm ml-1">
-                                                🔥 +{currentQuestion.clusterSize - 1}
+                        <div className="flex flex-col mb-4">
+                            {/* 1. 메인 질문 카드 */}
+                            <div 
+                                key={currentQuestion.id} // 카드가 바뀔 때마다 확실하게 리렌더링 애니메이션이 발생하도록 고유 Key 부여
+                                className={`w-full rounded-[24px] p-5 shrink-0 shadow-xl flex justify-between gap-4 animate-in fade-in zoom-in-95 duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}
+                            >
+                                <div className="flex flex-col gap-3 flex-1">
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">
+                                                {currentQuestion?.avatar}
+                                            </div>
+                                            <span className="font-bold text-[14px]">{currentQuestion?.author}</span>
+                                            
+                                            {/* 1 / 총질문개수 형태로 표기 (currentIdx에 따라 유동적으로 변함) */}
+                                            <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1 tracking-widest">
+                                                1위
                                             </span>
+
+                                            {currentQuestion?.clusterSize && currentQuestion.clusterSize > 1 && (
+                                                <span className="text-[11px] font-extrabold bg-blue-100 text-blue-700 px-2 py-1 rounded-md border border-blue-200 flex items-center shadow-sm ml-1">
+                                                    🔥+{currentQuestion.clusterSize - 1}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {currentQuestion?.isPrivate && (
+                                            <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
+                                                <Lock className="w-3 h-3" strokeWidth={3} /> 비공개
+                                            </div>
                                         )}
                                     </div>
-                                    {currentQuestion?.isPrivate && (
-                                        <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
-                                            <Lock className="w-3 h-3" strokeWidth={3} /> 비공개 질문
-                                        </div>
-                                    )}
+                                    <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
                                 </div>
-                                <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
+                                
+                                <div className="flex flex-col gap-2 shrink-0 justify-center">
+                                    <button
+                                        onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))}
+                                        className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
+                                    >
+                                        <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
+                                        {isReading ? '읽는 중...' : '질문 읽기'}
+                                    </button>
+                                    <button
+                                        onClick={() => completeQuestion(Number(currentQuestion?.id))}
+                                        className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
+                                    >
+                                        답변 완료
+                                    </button>
+                                </div>
                             </div>
-                            {/* 질문 카드 우측 버튼 영역 */}
-                            <div className="flex flex-col gap-2 shrink-0 justify-center">
-                                {/* onClick에 acknowledgeQuestion(답변 시작) 함수 연결 */}
-                                <button
-                                    onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))}
-                                    className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
-                                >
-                                    <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
-                                    {isReading ? '읽는 중...' : '질문 읽기'}
-                                </button>
 
-                                {/* onClick에 completeQuestion(답변 완료) 함수 연결 */}
-                                <button
-                                    onClick={() => completeQuestion(Number(currentQuestion?.id))}
-                                    className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
-                                >
-                                    답변 완료
-                                </button>
-                            </div>
+                            {/* 2. 시각적 랭킹 확인을 위한 '실시간 다음 대기열' 리스트 추가 렌더링 */}
+                            {questionQueue.length > 1 && (
+                                <div className="w-full bg-[#1A1A1A] border border-gray-800 rounded-xl p-3 mt-2 flex flex-col gap-2 animate-in fade-in duration-500">
+                                    <p className="text-xs font-bold text-gray-500 mb-1 flex items-center">
+                                        <span className="flex items-center">
+                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></span>
+                                            실시간 AI 랭킹 대기열 (멘토 발화 맥락 연동 중)
+                                        </span>
+                                        {/* 💡 [추가]: 현재 대기열에 쌓인 전체 질문 개수 렌더링 */}
+                                        <span className="text-[11px] text-gray-400 font-extrabold bg-gray-800/50 px-2 py-0.5 rounded-md border border-gray-800">
+                                            총 {questionQueue.length}개
+                                        </span>
+                                    </p>
+                                    {/* 실시간 랭킹 2위~3위까지 2개 렌더링 */}
+                                    {questionQueue.slice(1, 3).map((q, idx) => (
+                                        <div key={q.id} className="flex items-center gap-3 opacity-70 hover:opacity-100 transition-all duration-300">
+                                            <span className="text-[10px] font-extrabold bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded border border-gray-700">
+                                                {idx + 2}위
+                                            </span>
+                                            <p className="text-[12px] text-gray-300 truncate flex-1">{q.content}</p>
+                                            {q.isPaid && <span className="text-[10px] bg-[#FFCC00] text-black px-1.5 rounded font-bold">유료</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     ) : (
-                        // 3. 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
+                        // 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
                         <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-sm border border-gray-800 bg-[#1A1A1A] text-gray-400 flex flex-col items-center justify-center min-h-[120px]">
                             <MessageSquare className="w-6 h-6 mb-2 opacity-50" />
                             <p className="text-sm font-medium">현재 대기 중인 질문이 없습니다.</p>
