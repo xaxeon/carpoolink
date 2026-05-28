@@ -32,13 +32,6 @@ interface ChatMessage {
     questionId?: string | null;
 }
 
-// STT 스크립트 반환 규격 인터페이스
-interface STTScript {
-    scriptId: string;
-    chunkIndex: number;
-    text: string;
-}
-
 // 1. 게이트웨이 컴포넌트: 정보가 준비될 때까지 로딩만 보여줌
 export default function MentorLivePage() {
     const params = useParams();
@@ -101,9 +94,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [isRanking, setIsRanking] = useState(false);
 
     // 실시간 텍스트 변환 내역들을 누적 보관할 런타임 상태
-    const [scriptSegments, setScriptSegments] = useState<STTScript[]>([]);
-    const chunkIndexRef = useRef<number>(0);
-    const recorderIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const pausedQuestionUserIdRef = useRef<number | null>(null);
 
     // 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
@@ -149,7 +139,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         setIsPrivateMode(false);
                         if (currentQuestionRef.current) {
                             // 답변 완료 함수를 호출
-                            completeQuestion(currentQuestionRef.current.id); 
+                            completeQuestion(currentQuestionRef.current.id);
                         }
                         // resumeMenteeConsumers 시그널 전송
                         if (sendSignal) {
@@ -164,123 +154,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         return () => {
             socket.off('signal', handleSignal);
         };
-    }, [socket, isReading]); 
-
-    // [STT 모니터링 강화] 하드웨어 오디오 스트림 추적 및 전송 로그 추가 파이프라인
-    useEffect(() => {
-        if (!localStream) {
-            console.warn("[🎙️ STT 모니터링] localStream이 존재하지 않아 대기 중입니다.");
-            return;
-        }
-        if (!isMicOn) {
-            console.log("[🎙️ STT 모니터링] 현재 멘토 마이크가 '음소거(Mic Off)' 상태입니다. 수집을 일시 중단합니다.");
-            return;
-        }
-        if (!userId || !mentoringId) {
-            console.warn("[🎙️ STT 모니터링] 인증 정보(userId, mentoringId)가 누락되었습니다.");
-            return;
-        }
-
-        const audioTracks = localStream.getAudioTracks();
-        if (audioTracks.length === 0) {
-            console.error("[🚨 STT 에러] 스트림 내에서 활성화된 마이크(Audio Track)를 찾을 수 없습니다 하드웨어를 확인하세요.");
-            return;
-        }
-
-        // 1. 마이크 활성화 상태 로그 파싱
-        const activeTrack = audioTracks[0];
-        console.log(`[✅ 마이크 인식 성공] 장치명: "${activeTrack.label}" | 상태: ${activeTrack.enabled ? "활성" : "비활성"}`);
-
-        const audioStream = new MediaStream(audioTracks);
-        const mediaRecorder = new MediaRecorder(audioStream, {
-            mimeType: "audio/webm;codecs=opus",
-        });
-
-        mediaRecorder.onstart = () => {
-            console.log(`[🚀 레코더 시작] 청크 인덱스 [${chunkIndexRef.current}] 오디오 데이터 수집을 시작합니다.`);
-        };
-
-        mediaRecorder.ondataavailable = async (event) => {
-            // 2. 음성 데이터 추출 성공 로그
-            if (event.data && event.data.size > 0) {
-                const audioBlob = event.data;
-                const currentIndex = chunkIndexRef.current;
-                chunkIndexRef.current += 1;
-
-                console.log(`[📦 청크 패킹 완료] 인덱스: ${currentIndex} | 용량: ${(audioBlob.size / 1024).toFixed(2)} KB | 포맷: ${audioBlob.type}`);
-
-                const formData = new FormData();
-                formData.append("audio", audioBlob, `chunk_${currentIndex}.webm`);
-                formData.append("userId", String(userId));
-                formData.append("mentoringId", String(mentoringId));
-                formData.append("chunkIndex", String(currentIndex));
-
-                console.log(`[📡 전송 시도] stt-service(4004)로 청크 [${currentIndex}] 데이터 업로드를 시작합니다...`);
-                const startTime = performance.now(); // 네트워크 지연시간 계산용
-
-                try {
-                    const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004"
-                    const response = await fetch(`${STT_SERVER_URL}/audio/stt/chunk`, {
-                        method: "POST",
-                        body: formData,
-                    });
-
-                    const endTime = performance.now();
-                    const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-                    // 3. 서버 도달 및 처리 완료 로그
-                    if (response.ok) {
-                        const data = await response.json();
-                        console.log(`[🎉 전송 및 STT 대성공] 청크 [${currentIndex}] 처리 완료 (${duration}초 소요)`);
-
-                        // 백엔드 stt.js 반환 스펙(data.text)에 맞추어 조건식과 데이터 구조 전면 교정
-                        if (data && typeof data.text === 'string' && data.text.trim() !== "") {
-                            console.log(`[📝 AI Whisper 변환 결과]: "${data.text}"`);
-
-                            // 하단 오버레이 자막 및 타임라인 배열 업데이트
-                            const newSegment: STTScript = {
-                                scriptId: data.scriptId || String(Date.now()),
-                                chunkIndex: currentIndex,
-                                text: data.text
-                            };
-
-                            setScriptSegments((prev) => {
-                                // 기존에 이미 존재하는 인덱스는 제외하고 순서대로 정렬 결합
-                                const filtered = prev.filter(p => p.chunkIndex !== currentIndex);
-                                return [...filtered, newSegment].sort((a, b) => a.chunkIndex - b.chunkIndex);
-                            });
-                        } else {
-                            console.log(`[🔇 음성 공백] 청크 [${currentIndex}] 구간에 인식된 발화(텍스트)가 없습니다.`);
-                        }
-                    } else {
-                        console.error(`[❌ 서버 처리 에러] 청크 [${currentIndex}] 전송은 되었으나 서버가 에러를 응답했습니다. 상태코드: ${response.status}`);
-                    }
-                } catch (error) {
-                    console.error(`[🚨 네트워크 통신 실패] 청크 [${currentIndex}]가 백엔드 서버(4004)에 도달하지 못했습니다. 서버가 켜져 있는지 확인하세요.`, error);
-                }
-            } else {
-                console.warn(`[⚠️ 데이터 유실 경고] 청크 [${chunkIndexRef.current}] 데이터 이벤트가 트리거되었으나 오디오 크기가 0바이트입니다.`);
-            }
-        };
-
-        mediaRecorder.start();
-
-        recorderIntervalRef.current = setInterval(() => {
-            if (mediaRecorder.state === "recording") {
-                console.log(`[⏱️ 15초 인터벌 도달] 현재 녹음 세션을 끊고 청크 [${chunkIndexRef.current}] 전송 프로세스를 유도합니다.`);
-                mediaRecorder.stop();
-                mediaRecorder.start();
-            }
-        }, 15000);
-
-        return () => {
-            console.log("[🔌 수집기 종료] 마이크 상태 변경 또는 컴포넌트 언마운트로 인해 오디오 리스너를 해제합니다.");
-            if (recorderIntervalRef.current) clearInterval(recorderIntervalRef.current);
-            if (mediaRecorder && mediaRecorder.state !== "inactive") {
-                mediaRecorder.stop();
-            }
-        };
-    }, [localStream, isMicOn, userId, mentoringId]);
+    }, [socket, isReading]);
 
     // [질문 목록 로드 - 초기 DB 데이터 반영]
     useEffect(() => {
@@ -322,12 +196,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         return questions.filter(q => !completedStringIds.includes(String(q.id)));
     }, [questions, completedIds]);
 
-    // [STT 추가] 화면 하단 레이어에 바로 띄워줄 가장 최신의 라이브 자막 데이터 추출
-    const latestSubtitle = useMemo(() => {
-        if (scriptSegments.length === 0) return "";
-        return scriptSegments[scriptSegments.length - 1].text;
-    }, [scriptSegments]);
-
     // [클러스터링 & 랭킹] 단일 직렬화 파이프라인 통합 엔진
     useEffect(() => {
         if (activeQuestions.length === 0) {
@@ -343,11 +211,18 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 const QUESTION_SERVICE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4003";
 
                 // 1. 실시간 STT 맥락 데이터 가공 (최근 발화 5개 문장 결합)
-                const currentSTTSection = scriptSegments
-                    .slice(-5)
-                    .map(s => s.text)
-                    .join(" ")
-                    .trim();
+                let currentSTTSection = "";
+                try {
+                    const scriptRes = await apiClient.get(
+                        `/api/mentorings/${mentoringId}/scripts/recent?limit=5`
+                    );
+                    currentSTTSection = (scriptRes.data?.scripts || [])
+                        .map((s: any) => s.text)
+                        .join(" ")
+                        .trim();
+                } catch {
+                    // 실패 시 빈 문자열로 fallback
+                }
 
                 // 2. 질문 데이터 전송 안정성 확보 및 trim 처리
                 const safeQuestions = activeQuestions.map(q => ({
@@ -445,7 +320,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
         return () => clearTimeout(timer);
         // 의존성 배열에 activeQuestions와 scriptSegments(STT 자막 전송 감지)만 남겨서 데이터 흐름을 정형화합니다.
-    }, [activeQuestions, scriptSegments]);
+    }, [activeQuestions]);
 
     // 유료 가중치 최우선 배정 후, AI questionRanking 점수 순 정렬 파이프라인
     const questionQueue = useMemo(() => {
@@ -695,8 +570,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
             if (questionText) {
                 // 비공개 질문 여부(question.isPrivate)를 확인하여 TTS 안내 멘트를 조립.
-                const ttsText = question.isPrivate 
-                    ? `비공개 질문입니다. ${questionText}` 
+                const ttsText = question.isPrivate
+                    ? `비공개 질문입니다. ${questionText}`
                     : questionText;
 
                 // 백그라운드에서 오디오 재생 함수 실행
@@ -705,10 +580,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 // 읽은 질문 내용을 STT 스크립트 DB에 직접 기록
                 try {
                     const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
-                    
+
                     // AI가 문맥을 더 잘 파악할 수 있도록 앞에 꼬리표를 달아줍니다.
-                    const scriptText = `(질문 읽기) ${ttsText}`; 
-                    
+                    const scriptText = `(질문 읽기) ${ttsText}`;
+
                     fetch(`${STT_SERVER_URL}/audio/stt/text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
