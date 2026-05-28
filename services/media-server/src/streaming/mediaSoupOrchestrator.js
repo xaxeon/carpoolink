@@ -366,7 +366,13 @@ export class MediaSoupOrchestrator {
             if (peer.role !== 'MENTEE') continue;
             if (exceptUserId && String(peer.userId) === String(exceptUserId)) continue; //제외
             for (const consumer of peer.consumers.values()) {
-                await consumer.pause();
+                try {
+                    if (consumer.kind === 'audio') {
+                        await consumer.pause();
+                    }
+                } catch (err) {
+                    console.error(`송출 일시정지에 실패했습니다. ${consumer.id} (kind=${consumer.kind}):`, err);
+                }
             }
         }
     }
@@ -377,7 +383,13 @@ export class MediaSoupOrchestrator {
         for (const peer of room.peers.values()) {
             if (peer.role !== 'MENTEE') continue;
             for (const consumer of peer.consumers.values()) {
-                await consumer.resume();
+                try {
+                    if (consumer.kind === 'audio') {
+                        await consumer.resume();
+                    }
+                } catch (err) {
+                    console.error(`송출 재개에 실패했습니다. ${consumer.id} (kind=${consumer.kind}):`, err);
+                }
             }
         }
     }
