@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import apiClient from "@/lib/apiClient";
 
 import { io, Socket } from "socket.io-client";
-import { Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown, AlertCircle, Play, Lock } from "lucide-react";
+import { Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown, AlertCircle, Play, Lock, Loader2, HelpCircle } from "lucide-react";
 
 import { useMentoringSession } from "@/hooks/useMentoringSession";
 import { useWebRtcSession } from "@/hooks/useWebRtcSession";
@@ -29,6 +29,40 @@ interface ChatMessage {
     isQuestion?: boolean;
     questionId?: string | null;
 }
+
+interface AiQuestion {
+  content: string;
+  category: string;
+  reason: string;
+}
+
+// AI 질문 추천 카테고리 매핑 객체
+const CATEGORY_MAP: Record<string, { label: string; color: string }> = {
+    concept: { 
+        label: "💡 개념 확인", 
+        color: "text-amber-400 bg-amber-400/10 border-amber-400/20" 
+    },
+    reasoning: { 
+        label: "🤔 원리 파악", 
+        color: "text-purple-400 bg-purple-400/10 border-purple-400/20" 
+    },
+    application: { 
+        label: "🎯 실전 적용", 
+        color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" 
+    },
+    comparison: { 
+        label: "⚖️ 비교 분석", 
+        color: "text-rose-400 bg-rose-400/10 border-rose-400/20" 
+    },
+    follow_up: { 
+        label: "💬 꼬리 질문", 
+        color: "text-blue-400 bg-blue-400/10 border-blue-400/20" 
+    },
+    default: { 
+        label: "✨ 맞춤 질문", 
+        color: "text-[#FFCC00] bg-[#FFCC00]/10 border-[#FFCC00]/20" 
+    }
+};
 
 // ============================================================================
 // [Wrapper 컴포넌트] 로딩 화면 & 방 입장 기록(History) 생성 게이트웨이
@@ -124,6 +158,10 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
     const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
     const [isPrivateQuestion, setIsPrivateQuestion] = useState(false);
 
+    // AI 질문 추천 전용 상태 선언.
+    const [aiQuestions, setAiQuestions] = useState<AiQuestion[]>([]);
+    const [isAiLoading, setIsAiLoading] = useState(false);
+
     const [chatSocket, setChatSocket] = useState<Socket | null>(null);
     const [chats, setChats] = useState<ChatMessage[]>([]);
     const [onlineUserCount, setOnlineUserCount] = useState<number>(0);
@@ -141,6 +179,44 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
         mentoringType: "GROUP",
         isJoined: isConnected
     });
+
+    // AI 질문 추천 API 연동 로직
+    const fetchAiRecommendations = async () => {
+        setIsAiLoading(true);
+        try {
+            // 프론트엔드는 오직 실시간 대화 흐름(최근 채팅 5개)만 배열 상태 그대로 전달합니다.
+            const recentChats = chats.slice(-5);
+            const existingQuestionTexts = aiQuestions.map(q => q.content);
+
+            // 전송할 Payload 객체를 먼저 변수로 생성.
+            const payload = {
+                userId: userId,
+                chats: recentChats,
+                excludeQuestions: existingQuestionTexts
+            };
+
+            // Core API(4000) 엔드포인트를 호출합니다.
+            const res = await apiClient.post(`/api/mentorings/${mentoringId}/recommendations`, {
+                userId: userId,
+                chats: recentChats
+            });
+            
+            if (res.data?.questions) {
+                setAiQuestions(res.data.questions);
+            }
+        } catch (error) {
+            console.error("🚨 AI 질문 추천 로드 실패:", error);
+            alert("추천 질문을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isAiOpen) {
+            fetchAiRecommendations();
+        }
+    }, [isAiOpen]);
 
     const handleAutoPlayBlocked = useCallback(() => {
         setIsAutoplayBlocked(true);
@@ -318,10 +394,10 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
         }
     };
 
-    const handleSuggestionClick = (question: string) => {
-        const cleanText = question.replace(/^\d+\.\s*/, '');
-        setChatInput(cleanText);
-        setIsAiOpen(false);
+    // 문자열 대신 AiQuestion 객체를 받도록 수정
+    const handleSuggestionClick = (question: AiQuestion) => {
+        setChatInput(question.content); // 채팅 입력창에 텍스트 채우기
+        setIsAiOpen(false);             // 팝업 닫기 (선택 사항)
     };
 
     if (isLoading) {
@@ -493,24 +569,73 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                 <div className="relative z-10 flex flex-col items-end">
                     {!isChatClosed && (
                         <>
+                            {/* AI 추천 토글 버튼 */}
                             <button onClick={() => setIsAiOpen(!isAiOpen)} className="flex items-center gap-1.5 px-3 py-1.5 mb-2 bg-[#222222] border border-gray-700/50 rounded-full shadow-md hover:bg-gray-800 transition-colors active:scale-95">
                                 <Sparkles className="w-3.5 h-3.5 text-[#FFCC00]" />
                                 <span className="text-[13px] font-medium text-gray-300">{isAiOpen ? "AI 추천 닫기" : "AI 질문 추천"}</span>
                                 {isAiOpen ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
                             </button>
 
-                            <div className={`w-full bg-[#222222] border border-gray-700/50 rounded-2xl shadow-lg transition-all duration-300 ease-in-out overflow-hidden flex flex-col ${isAiOpen ? "max-h-64 opacity-100 p-4 mb-3" : "max-h-0 opacity-0 p-0 m-0 border-transparent"}`}>
-                                <ul className="space-y-3">
-                                    {["1. 신입 개발자로서 가장 중요하게 생각하시는 역량이 무엇인가요?", "2. 향후 커리어 방향을 어떻게 잡아야 할까요?", "3. 이력서에서 보완해야 할 점이 있다면 무엇일까요?"].map((item, idx) => (
-                                        <li key={idx} onClick={() => handleSuggestionClick(item)} className="text-sm text-gray-300 hover:text-white cursor-pointer transition-colors line-clamp-1 p-2 rounded-lg hover:bg-gray-700/30 active:bg-gray-700/50">
-                                            {item}
-                                        </li>
-                                    ))}
-                                </ul>
+                            {/* AI 추천 팝업 컨테이너 */}
+                            <div className={`w-full bg-[#222222] border border-gray-700/50 rounded-2xl shadow-lg transition-all duration-300 ease-in-out overflow-hidden flex flex-col ${isAiOpen ? "max-h-80 opacity-100 p-4 mb-3" : "max-h-0 opacity-0 p-0 m-0 border-transparent"}`}>
+                                <div className="flex flex-col gap-2 overflow-y-auto custom-scrollbar">
+                                    {isAiLoading ? (
+                                        // 1. 로딩 상태 UI
+                                        <div className="flex flex-col items-center justify-center py-6 gap-2">
+                                            <Loader2 className="w-6 h-6 text-[#FFCC00] animate-spin" />
+                                            <span className="text-xs text-gray-400">AI가 맞춤 질문을 생성 중입니다...</span>
+                                        </div>
+                                    ) : aiQuestions.length > 0 ? (
+                                        // 2. 추천 질문 리스트 렌더링
+                                        aiQuestions.map((item, idx) => {
+                                            // 매핑 객체에서 현재 카테고리에 맞는 라벨과 색상 추출
+                                            const catInfo = CATEGORY_MAP[item.category?.toLowerCase()] || CATEGORY_MAP.default;
+
+                                            return (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => handleSuggestionClick(item)}
+                                                    // group 클래스를 추가하여 하위 요소들이 호버 상태를 공유하도록 함
+                                                    className="group flex flex-col text-left w-full p-3 rounded-xl bg-gray-800/40 border border-gray-700/50 hover:bg-gray-700/80 hover:border-gray-600 active:bg-gray-700 transition-all"
+                                                >
+                                                    <div className="flex items-start gap-2.5 w-full">
+                                                        {/* 한글화 및 전용 색상 테마 적용 */}
+                                                        <span className={`shrink-0 text-[10.5px] px-2 py-0.5 font-bold rounded-md border ${catInfo.color}`}>
+                                                            {catInfo.label}
+                                                        </span>
+                                                        
+                                                        {/* 질문 내용 */}
+                                                        <span className="text-[13px] font-medium text-gray-300 leading-relaxed group-hover:text-white transition-colors">
+                                                            {item.content}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* 추천 이유 (Grid 트랜지션을 활용한 부드러운 아코디언 효과) */}
+                                                    <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-300 ease-in-out w-full">
+                                                        <div className="overflow-hidden">
+                                                            <div className="flex items-start gap-1.5 mt-2 pt-2 border-t border-gray-600/50">
+                                                                <HelpCircle className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
+                                                                <span className="text-[11.5px] text-gray-400 leading-snug">
+                                                                    {item.reason}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })
+                                    ) : (
+                                        // 📭 3. 데이터가 없을 때의 예외 처리
+                                        <p className="text-center text-xs text-gray-500 py-4">
+                                            현재 추천할 질문이 없습니다.
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         </>
                     )}
 
+                    {/* 채팅 입력 영역 */}
                     <div className="relative flex items-end gap-3 w-full">
                         <div className="relative flex items-center w-full">
                             <input
