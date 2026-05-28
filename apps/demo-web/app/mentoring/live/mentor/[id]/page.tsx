@@ -12,6 +12,7 @@ import apiClient from "@/lib/apiClient";
 
 interface Question {
     id: number;
+    userId?: number;
     isPaid: boolean;
     isPrivate: boolean;
     author: string;
@@ -100,10 +101,11 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [scriptSegments, setScriptSegments] = useState<STTScript[]>([]);
     const chunkIndexRef = useRef<number>(0);
     const recorderIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const pausedQuestionUserIdRef = useRef<number | null>(null);
 
     // 훅들은 컴포넌트가 마운트될 때 단 한 번, 올바른 userId로 실행됩니다.
     const mentoringOptions = useMemo(() => ({ role, userId }), [role, userId]);
-    const { sessionData, isConnected, peerId, socket, endMentoring, isLoading, error } = useMentoringSession(mentoringOptions);
+    const { sessionData, isConnected, peerId, socket, endMentoring, isLoading, error, sendSignal } = useMentoringSession(mentoringOptions);
 
     const webRtcConfig = useMemo(() => ({
         socket,
@@ -144,7 +146,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
         const audioStream = new MediaStream(audioTracks);
         const mediaRecorder = new MediaRecorder(audioStream, {
-            mimeType: "audio/webm;codecs=opus", 
+            mimeType: "audio/webm;codecs=opus",
         });
 
         mediaRecorder.onstart = () => {
@@ -173,7 +175,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004"
                     const response = await fetch(`${STT_SERVER_URL}/audio/stt/chunk`, {
                         method: "POST",
-                        body: formData, 
+                        body: formData,
                     });
 
                     const endTime = performance.now();
@@ -183,11 +185,11 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     if (response.ok) {
                         const data = await response.json();
                         console.log(`[🎉 전송 및 STT 대성공] 청크 [${currentIndex}] 처리 완료 (${duration}초 소요)`);
-                        
+
                         // 백엔드 stt.js 반환 스펙(data.text)에 맞추어 조건식과 데이터 구조 전면 교정
                         if (data && typeof data.text === 'string' && data.text.trim() !== "") {
                             console.log(`[📝 AI Whisper 변환 결과]: "${data.text}"`);
-                            
+
                             // 하단 오버레이 자막 및 타임라인 배열 업데이트
                             const newSegment: STTScript = {
                                 scriptId: data.scriptId || String(Date.now()),
@@ -219,7 +221,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         recorderIntervalRef.current = setInterval(() => {
             if (mediaRecorder.state === "recording") {
                 console.log(`[⏱️ 15초 인터벌 도달] 현재 녹음 세션을 끊고 청크 [${chunkIndexRef.current}] 전송 프로세스를 유도합니다.`);
-                mediaRecorder.stop(); 
+                mediaRecorder.stop();
                 mediaRecorder.start();
             }
         }, 15000);
@@ -245,6 +247,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         .filter((q: any) => q.status !== 'COMPLETED') // 프론트에서 완료된 질문만 필터링
                         .map((q: any) => ({
                             id: q.questionId,
+                            userId: q.user?.userId || q.userId,
                             type: q.isPaid ? "paid" : "free",
                             isPaid: q.isPaid || false,
                             isPrivate: q.isPrivate || false,
@@ -291,7 +294,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             setIsRanking(true);
             try {
                 const QUESTION_SERVICE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4003";
-                
+
                 // 1. 실시간 STT 맥락 데이터 가공 (최근 발화 5개 문장 결합)
                 const currentSTTSection = scriptSegments
                     .slice(-5)
@@ -321,7 +324,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         const clusterData = await clusterRes.json();
                         currentClusters = clusterData.clusters || [];
                         // 기존에 사용하던 상태 업데이트 그대로 유지
-                        setClusters(currentClusters); 
+                        setClusters(currentClusters);
                     }
                 } catch (e) {
                     console.error("🚨 클러스터링 API 호출 에러:", e);
@@ -362,21 +365,21 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
                 if (rankRes.ok) {
                     const rankData = await rankRes.json();
-                    
+
                     // 백엔드가 정확히 어떤 구조로 주는지 콘솔에 원본 출력
                     console.log("🔍 [랭킹 API 원본 응답 데이터]:", rankData);
 
                     const newRankings: Record<string, number> = {};
-                    
+
                     const rankArray = rankData.rankedQuestions || [];
 
                     if (Array.isArray(rankArray)) {
                         rankArray.forEach((item: any) => {
                             const qId = String(item.id);
-                            
+
                             // (priorityScore가 없을 경우 answerabilityScore를 예비로 사용)
                             const qScore = Number(item.priorityScore || item.answerabilityScore || 0);
-                            
+
                             newRankings[qId] = qScore;
                         });
                     }
@@ -394,7 +397,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }, 800); // 0.8초 디바운스 딜레이
 
         return () => clearTimeout(timer);
-    // 의존성 배열에 activeQuestions와 scriptSegments(STT 자막 전송 감지)만 남겨서 데이터 흐름을 정형화합니다.
+        // 의존성 배열에 activeQuestions와 scriptSegments(STT 자막 전송 감지)만 남겨서 데이터 흐름을 정형화합니다.
     }, [activeQuestions, scriptSegments]);
 
     // 유료 가중치 최우선 배정 후, AI questionRanking 점수 순 정렬 파이프라인
@@ -404,7 +407,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             return [...activeQuestions].sort((a, b) => {
                 if (a.isPaid && !b.isPaid) return -1;
                 if (!a.isPaid && b.isPaid) return 1;
-                
+
                 const scoreA = questionRankings[String(a.id)] || 0;
                 const scoreB = questionRankings[String(b.id)] || 0;
                 return scoreB - scoreA; // 점수 내림차순
@@ -420,7 +423,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 ...originalQ,
                 id: repId,
                 content: cluster.representative_question, // AI 정제 텍스트
-                clusterSize: cluster.member_questions?.length || 1, 
+                clusterSize: cluster.member_questions?.length || 1,
             } as Question;
         });
 
@@ -460,7 +463,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         if (currentIdx >= questionQueue.length) {
             setCurrentIdx(questionQueue.length - 1);
         }
-    // 의존성 배열에 questionQueue 자체를 감시하여, 실시간 랭킹 점수 변동으로 순서가 뒤바뀔 때마다 즉각 반응하게 만듭니다.
+        // 의존성 배열에 questionQueue 자체를 감시하여, 실시간 랭킹 점수 변동으로 순서가 뒤바뀔 때마다 즉각 반응하게 만듭니다.
     }, [questionQueue, isReading]);
 
     // [채팅 소켓 설정]
@@ -495,6 +498,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 if (!q) return;
                 const mapped: Question = {
                     id: Number(q.questionId),
+                    userId: q.user?.userId || q.userId,
                     isPaid: q.isPaid || false,
                     isPrivate: q.isPrivate || false,
                     author: q.user?.nickname || '익명멘티',
@@ -587,16 +591,48 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     };
 
     // [1] 답변 시작 시점 (질문 읽기 버튼)
-    const acknowledgeQuestion = async (questionId: number) => {
-        if (!mentoringId || !questionId) {
-            console.error("🚨 [프론트 에러] 멘토링 ID 또는 질문 ID가 없습니다!", { mentoringId, questionId });
+    const acknowledgeQuestion = async (question: Question) => {
+        if (!mentoringId || !question.id) {
+            console.error("🚨 [프론트 에러] 멘토링 ID 또는 질문 ID가 없습니다!", { mentoringId, questionId: question.id });
+            return;
+        }
+
+        if (!question?.userId) {
+            console.error("🚨 [프론트 에러] 질문 작성자의 userId를 찾을 수 없습니다.", { questionId: question.id, question });
+            alert("질문 작성자 정보를 찾을 수 없어 음성 제어를 시작하지 못했습니다.");
             return;
         }
 
         try {
-            console.log(`🚀 [API 요청] 질문 읽기 시작 (ID: ${questionId})`);
+            console.log(`🚀 [API 요청] 질문 읽기 시작 (ID: ${question.id})`);
 
-            const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`);
+            await new Promise<void>((resolve, reject) => {
+                if (!socket?.connected || !sendSignal) {
+                    reject(new Error("미디어 소켓이 연결되지 않았습니다."));
+                    return;
+                }
+
+                sendSignal(
+                    "pauseMenteeConsumers",
+                    {
+                        mentoringId: Number(mentoringId),
+                        exceptUserId: question.userId,
+                    },
+                    (response: any) => {
+                        if (response?.ok) {
+                            resolve();
+                            console.log(`✅ [시그널 성공] 멘티 음성 수신이 일시 중지됨 (exceptUserId: ${question.userId})`);
+                            return;
+                        }
+
+                        reject(new Error(response?.error || "멘티 음성 수신을 일시 중지하지 못했습니다."));
+                    }
+                );
+            });
+
+            pausedQuestionUserIdRef.current = question.userId;
+
+            const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${question.id}/acknowledge`);
 
             setIsReading(true);
             console.log(`✅ [API 성공] 질문 상태가 ANSWERING으로 변경됨:`, res.data);
@@ -612,6 +648,34 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             }
 
         } catch (err: any) {
+            if (pausedQuestionUserIdRef.current !== null) {
+                try {
+                    await new Promise<void>((resolve, reject) => {
+                        if (!socket?.connected || !sendSignal) {
+                            reject(new Error("미디어 소켓이 연결되지 않았습니다."));
+                            return;
+                        }
+
+                        sendSignal(
+                            "resumeMenteeConsumers",
+                            { mentoringId: Number(mentoringId) },
+                            (response: any) => {
+                                if (response?.ok) {
+                                    resolve();
+                                    return;
+                                }
+
+                                reject(new Error(response?.error || "멘티 음성 수신을 다시 시작하지 못했습니다."));
+                            }
+                        );
+                    });
+                } catch (resumeErr) {
+                    console.error("❌ [복구 실패] 멘티 음성 수신 재개에 실패했습니다.", resumeErr);
+                } finally {
+                    pausedQuestionUserIdRef.current = null;
+                }
+            }
+
             console.error('❌ [API 실패] 질문 읽기 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 확인에 실패했습니다.');
         }
@@ -622,6 +686,36 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         if (!mentoringId || !questionId) {
             console.error("🚨 [프론트 에러] 멘토링 ID 또는 질문 ID가 없습니다!", { mentoringId, questionId });
             return;
+        }
+
+        const shouldResumeAudio = pausedQuestionUserIdRef.current !== null;
+
+        if (shouldResumeAudio) {
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    if (!socket?.connected || !sendSignal) {
+                        reject(new Error("미디어 소켓이 연결되지 않았습니다."));
+                        return;
+                    }
+
+                    sendSignal(
+                        "resumeMenteeConsumers",
+                        { mentoringId: Number(mentoringId) },
+                        (response: any) => {
+                            if (response?.ok) {
+                                resolve();
+                                return;
+                            }
+
+                            reject(new Error(response?.error || "멘티 음성 수신을 다시 시작하지 못했습니다."));
+                        }
+                    );
+                });
+            } catch (resumeErr) {
+                console.error("❌ [복구 실패] 멘티 음성 수신 재개에 실패했습니다.", resumeErr);
+            } finally {
+                pausedQuestionUserIdRef.current = null;
+            }
         }
 
         try {
@@ -642,8 +736,21 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         } catch (err: any) {
             console.error('❌ [API 실패] 질문 완료 처리 에러:', err.response?.data || err);
             alert(err?.response?.data?.message || '질문 완료 처리에 실패했습니다.');
+        } finally {
+            setIsReading(false);
         }
     };
+
+    useEffect(() => {
+        return () => {
+            if (!pausedQuestionUserIdRef.current || !socket?.connected || !sendSignal) {
+                return;
+            }
+
+            sendSignal("resumeMenteeConsumers", { mentoringId: Number(mentoringId) });
+            pausedQuestionUserIdRef.current = null;
+        };
+    }, [mentoringId, sendSignal, socket]);
 
     // TTS API 호출 및 음성 재생 함수
     const playQuestionAudio = async (text: string) => {
@@ -752,7 +859,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     ) : currentQuestion ? (
                         <div className="flex flex-col mb-4">
                             {/* 1. 메인 질문 카드 */}
-                            <div 
+                            <div
                                 key={currentQuestion.id} // 카드가 바뀔 때마다 확실하게 리렌더링 애니메이션이 발생하도록 고유 Key 부여
                                 className={`w-full rounded-[24px] p-5 shrink-0 shadow-xl flex justify-between gap-4 animate-in fade-in zoom-in-95 duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}
                             >
@@ -763,7 +870,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                                 {currentQuestion?.avatar}
                                             </div>
                                             <span className="font-bold text-[14px]">{currentQuestion?.author}</span>
-                                            
+
                                             {/* 1 / 총질문개수 형태로 표기 (currentIdx에 따라 유동적으로 변함) */}
                                             <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1 tracking-widest">
                                                 1위
@@ -783,10 +890,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                     </div>
                                     <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
                                 </div>
-                                
+
                                 <div className="flex flex-col gap-2 shrink-0 justify-center">
                                     <button
-                                        onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))}
+                                        onClick={() => acknowledgeQuestion(currentQuestion)}
                                         className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
                                     >
                                         <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
@@ -865,7 +972,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                     <>
                                         <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">다음 질문</button>
                                         <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
-                                        <button onClick={() => acknowledgeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 읽기</button>
+                                        <button onClick={() => acknowledgeQuestion(currentQuestion)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 읽기</button>
                                     </>
                                 )}
                             </div>
@@ -877,7 +984,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 {/* [3] 채팅 영역 (isChatOpen이 true일 때만 렌더링되도록 조건부 처리 추가) */}
                 {isChatOpen && (
                     <div className="flex-1 flex flex-col mt-4 animate-in fade-in slide-in-from-bottom-8 duration-500 overflow-hidden">
-                        
+
                         <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pb-6 pr-2">
 
                             {/* 유료 질문을 제외한 순수 채팅 개수만 체크 */}

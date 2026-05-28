@@ -300,6 +300,24 @@ export async function handleConnection(socket, io) {
                     }
                 });
                 console.log(`✅ [Question Saved] 질문 테이블 등록 완료 (ID: ${savedQuestion.questionId})`);
+
+                io.to(roomName).emit('question:registered', {
+                    questionId: savedQuestion.questionId,
+                    mentoringId: state.mentoringId,
+                    content,
+                    isPaid: savedQuestion.isPaid,
+                    isPrivate: savedQuestion.isPrivate,
+                    priorityScore: savedQuestion.priorityScore,
+                    status: savedQuestion.status,
+                    createdAt: savedQuestion.createdAt,
+                    user: savedQuestion.user
+                        ? {
+                            userId: savedQuestion.user.userId,
+                            nickname: savedQuestion.user.nickname,
+                        }
+                        : null,
+                    answerer: null,
+                });
             }
 
             // 4. 실시간 브로드캐스트 (프론트엔드로 전송)
@@ -372,7 +390,7 @@ export async function handleConnection(socket, io) {
             // 💡 [동적 매핑 3단계] 채팅 히스토리에 질문 데이터가 매칭되는지 확인 후 결과 조립
             const formattedMessages = messages.map((msg) => {
                 const messageKey = `${msg.userId.toString()}_${msg.content.trim()}`;
-                
+
                 // Map에 해당 key가 존재한다면 질문 테이블에 등록된 데이터임
                 const matchedQuestionId = questionLookupMap.get(messageKey) || null;
                 const isQuestion = matchedQuestionId !== null;
