@@ -32,6 +32,7 @@ multipart/form-data:
 router.post("/chunk", upload.single("audio"), async (req, res) => {
   try {
     const { userId, mentoringId, chunkIndex, startTime, endTime, sessionOffset } = req.body;
+    console.log('[STT] /chunk 수신', { userId, mentoringId, chunkIndex, audioSize: req.file?.size });
 
     // 필수값 체크
     if (!req.file || !userId || !mentoringId || chunkIndex === undefined) {

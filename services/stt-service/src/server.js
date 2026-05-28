@@ -8,6 +8,10 @@ const app = express();
 const PORT = process.env.STT_SERVICE_PORT || 4004;
 
 app.use(cors());
+app.use((req, res, next) => {
+    console.log(`[HTTP] ${req.method} ${req.url}`);
+    next();
+});
 app.use(express.json());
 app.use("/stt", sttRouter);
 app.use("/tts", ttsRouter);
