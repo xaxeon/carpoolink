@@ -701,6 +701,32 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
                 // 백그라운드에서 오디오 재생 함수 실행
                 playQuestionAudio(ttsText);
+
+                // 읽은 질문 내용을 STT 스크립트 DB에 직접 기록
+                try {
+                    const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
+                    
+                    // AI가 문맥을 더 잘 파악할 수 있도록 앞에 꼬리표를 달아줍니다.
+                    const scriptText = `(질문 읽기) ${ttsText}`; 
+                    
+                    fetch(`${STT_SERVER_URL}/audio/stt/text`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            userId: String(userId),
+                            mentoringId: String(mentoringId),
+                            text: scriptText,
+                            isPrivate: question.isPrivate
+                        })
+                    }).then(async (apiRes) => {
+                        if (apiRes.ok) {
+                            const data = await apiRes.json();
+                            console.log("📝 [스크립트 저장 성공] 질문 텍스트가 STT 문맥에 추가되었습니다.");
+                        }
+                    }).catch(e => console.error("📝 [스크립트 저장 실패]", e));
+                } catch (error) {
+                    console.error("질문 스크립트 API 호출 중 에러:", error);
+                }
             } else {
                 console.error("❌ 질문 텍스트를 찾을 수 없어 TTS를 실행하지 못했습니다.");
             }
