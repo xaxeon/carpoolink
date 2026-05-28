@@ -124,6 +124,10 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
     const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
     const [isPrivateQuestion, setIsPrivateQuestion] = useState(false);
 
+    // AI 질문 추천 전용 상태 선언.
+    const [aiQuestions, setAiQuestions] = useState<AiQuestion[]>([]);
+    const [isAiLoading, setIsAiLoading] = useState(false);
+
     const [chatSocket, setChatSocket] = useState<Socket | null>(null);
     const [chats, setChats] = useState<ChatMessage[]>([]);
     const [onlineUserCount, setOnlineUserCount] = useState<number>(0);
@@ -141,6 +145,44 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
         mentoringType: "GROUP",
         isJoined: isConnected
     });
+
+    // AI 질문 추천 API 연동 로직
+    const fetchAiRecommendations = async () => {
+        setIsAiLoading(true);
+        try {
+            // 프론트엔드는 오직 실시간 대화 흐름(최근 채팅 5개)만 배열 상태 그대로 전달합니다.
+            const recentChats = chats.slice(-5);
+            const existingQuestionTexts = aiQuestions.map(q => q.content);
+
+            // 전송할 Payload 객체를 먼저 변수로 생성.
+            const payload = {
+                userId: userId,
+                chats: recentChats,
+                excludeQuestions: existingQuestionTexts
+            };
+
+            // Core API(4000) 엔드포인트를 호출합니다.
+            const res = await apiClient.post(`/api/mentorings/${mentoringId}/recommendations`, {
+                userId: userId,
+                chats: recentChats
+            });
+            
+            if (res.data?.questions) {
+                setAiQuestions(res.data.questions);
+            }
+        } catch (error) {
+            console.error("🚨 AI 질문 추천 로드 실패:", error);
+            alert("추천 질문을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isAiOpen) {
+            fetchAiRecommendations();
+        }
+    }, [isAiOpen]);
 
     const handleAutoPlayBlocked = useCallback(() => {
         setIsAutoplayBlocked(true);
@@ -318,10 +360,10 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
         }
     };
 
-    const handleSuggestionClick = (question: string) => {
-        const cleanText = question.replace(/^\d+\.\s*/, '');
-        setChatInput(cleanText);
-        setIsAiOpen(false);
+    // 문자열 대신 AiQuestion 객체를 받도록 수정
+    const handleSuggestionClick = (question: AiQuestion) => {
+        setChatInput(question.content); // 채팅 입력창에 텍스트 채우기
+        setIsAiOpen(false);             // 팝업 닫기 (선택 사항)
     };
 
     if (isLoading) {
