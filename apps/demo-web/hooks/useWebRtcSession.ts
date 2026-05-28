@@ -279,7 +279,18 @@ export function useWebRtcSession(config: WebRtcSessionConfig): WebRtcSessionStat
         async (stream: MediaStream, transport: MediaSoupTypes.Transport) => {
             try {
                 const videoTrack = stream.getVideoTracks()[0];
-                if (!videoTrack) throw new Error("비디오 트랙을 찾을 수 없습니다");
+
+                // 1:1과 1:N을 구분하여 처리.
+                if (!videoTrack) {
+                    if (config.mentoringType === "ONE_ON_ONE") {
+                        // [1:1 멘토링] 비디오 트랙 없어도 통과
+                        console.warn("[1:1 멘토링] 비디오 트랙이 없습니다. 비디오 생성을 건너뜁니다.");
+                        return; 
+                    } else {
+                        // [1:N 라이브 멘토링] 비디오 트랙 부재 시 에러 발생
+                        throw new Error("비디오 트랙을 찾을 수 없습니다.");
+                    }
+                }
 
                 const producer = await transport.produce({
                     track: videoTrack,

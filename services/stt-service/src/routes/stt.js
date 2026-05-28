@@ -232,7 +232,8 @@ router.get("/mentoring/:mentoringId", async (req, res) => {
       mentoring: {
         mentoringId: mentoring ? mentoring.mentoringId.toString() : mentoringId,
         title: mentoring?.title || "라이브 멘토링 스크립트",
-        startedAt: mentoring?.startedAt || new Date().toISOString()
+        startedAt: mentoring?.startedAt || new Date().toISOString(),
+        isGroup: mentoring?.isGroup ?? false
       },
       scripts: serializedScripts
     });
