@@ -297,13 +297,16 @@ export async function handleConnection(socket, io) {
                         userId: BigInt(state.userId),
                         mentoringId: BigInt(state.mentoringId),
                         // priorityScore(0), status(BEFORE), createdAt(now)는 schema.prisma의 @default 값 자동 적용
+                    },
+                    include: {
+                        user: true
                     }
                 });
                 console.log(`✅ [Question Saved] 질문 테이블 등록 완료 (ID: ${savedQuestion.questionId})`);
 
                 io.to(roomName).emit('question:registered', {
-                    questionId: savedQuestion.questionId,
-                    mentoringId: state.mentoringId,
+                    questionId: savedQuestion.questionId.toString(),
+                    mentoringId: state.mentoringId.toString(),
                     content,
                     isPaid: savedQuestion.isPaid,
                     isPrivate: savedQuestion.isPrivate,
@@ -312,7 +315,7 @@ export async function handleConnection(socket, io) {
                     createdAt: savedQuestion.createdAt,
                     user: savedQuestion.user
                         ? {
-                            userId: savedQuestion.user.userId,
+                            userId: savedQuestion.user.userId.toString(),
                             nickname: savedQuestion.user.nickname,
                         }
                         : null,
