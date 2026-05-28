@@ -11,8 +11,9 @@ const MEDIA_SERVER_URL = process.env.MEDIA_SERVER_URL || 'http://localhost:4002'
 
 const COMMANDS = [
   { keywords: ['질문 읽어'], type: 'READ_QUESTION' },
-  { keywords: ['다음 질문'], type: 'READ_QUESTION' },
   { keywords: ['비공개', '완료'], type: 'END_PRIVATE' },
+  { keywords: ['답변', '완료'], type: 'END_PRIVATE' },
+  { keywords: ['다음', '질문'], type: 'END_PRIVATE' },
   { keywords: ['비공개', '답변'], type: 'START_PRIVATE' },
 ];
 
