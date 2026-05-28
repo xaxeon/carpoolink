@@ -12,16 +12,6 @@ interface ChatMessage {
   text: string;
 }
 
-// 음성 발화 데이터 관리 STT 인터페이스
-interface ScriptSegment {
-  scriptId: string;
-  chunkIndex: number;
-  text: string;
-  speakerName: string;
-  speakerRole: string;
-  timestamp: number;
-}
-
 export default function PrivateMentoringPage() {
   const [role, setRole] = useState<string>("MENTEE");
   const [userId, setUserId] = useState<number>(2);
@@ -40,11 +30,6 @@ export default function PrivateMentoringPage() {
   const [chatSocket, setChatSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]); // 더미 데이터 제거
   const [isChatClosed, setIsChatClosed] = useState(false);
-
-  // 순수 음성 STT 스크립트 상태 배열
-  const [scriptSegments, setScriptSegments] = useState<ScriptSegment[]>([]);
-  const chunkIndexRef = useRef<number>(0);
-  const recorderIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const storedRole = localStorage.getItem("userRole")?.toUpperCase();
@@ -104,97 +89,6 @@ export default function PrivateMentoringPage() {
       }
     }
   }, [sessionData, role]);
-
-  // 1:N STT 수집 로직
-  useEffect(() => {
-      const mentoringIdStr = sessionData?.mentoringId?.toString();
-
-      // 1:1 오디오 방 조건 적용: localStream(마이크)만 추적
-      if (!localStream) {
-          console.warn("[🎙️ STT 모니터링] localStream이 존재하지 않아 대기 중입니다.");
-          return;
-      }
-      if (!isMicOn) {
-          console.log("[🎙️ STT 모니터링] 마이크가 꺼져있어 STT 수집을 중단합니다.");
-          return;
-      }
-      if (!userId || !mentoringIdStr) return;
-
-      const audioTracks = localStream.getAudioTracks();
-      if (audioTracks.length === 0) return;
-
-      console.log(`[✅ 마이크 인식 성공] 장치명: "${audioTracks[0].label}"`);
-
-      const audioStream = new MediaStream(audioTracks);
-      const mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm;codecs=opus" });
-
-      mediaRecorder.onstart = () => {
-          console.log(`[🚀 레코더 시작] 발화자(${role}: ${userName})의 오디오 데이터 수집 시작`);
-      };
-
-      mediaRecorder.ondataavailable = async (event) => {
-          if (event.data && event.data.size > 0) {
-              const audioBlob = event.data;
-              const currentIndex = chunkIndexRef.current;
-              chunkIndexRef.current += 1;
-
-              const formData = new FormData();
-              formData.append("audio", audioBlob, `chunk_${currentIndex}.webm`);
-              formData.append("userId", String(userId));
-              formData.append("mentoringId", String(mentoringIdStr));
-              formData.append("chunkIndex", String(currentIndex));
-              // STT 서버가 DB에 저장할 때 구분할 수 있도록 발화자 정보 전송
-              formData.append("speakerRole", role);
-              formData.append("speakerName", userName);
-
-              try {
-                  const STT_SERVER_URL = process.env.NEXT_PUBLIC_STT_BASE_URL || "http://localhost:4004";
-                  const response = await fetch(`${STT_SERVER_URL}/audio/stt/chunk`, {
-                      method: "POST",
-                      body: formData, 
-                  });
-
-                  if (response.ok) {
-                      const data = await response.json();
-                      if (data && typeof data.text === 'string' && data.text.trim() !== "") {
-                          console.log(`[📝 AI Whisper 변환 결과 (${userName})]: "${data.text}"`);
-                          
-                          const newSegment: ScriptSegment = {
-                              scriptId: data.scriptId || String(Date.now()),
-                              chunkIndex: currentIndex,
-                              text: data.text,
-                              speakerName: userName,
-                              speakerRole: role,
-                              timestamp: Date.now()
-                          };
-
-                          // 프론트는 1:N 멘토링처럼 화면에 자막만 렌더링하고 끝! (DB 저장은 STT 서버의 몫)
-                          setScriptSegments((prev) => {
-                              const filtered = prev.filter(p => p.chunkIndex !== currentIndex);
-                              return [...filtered, newSegment].sort((a, b) => a.chunkIndex - b.chunkIndex);
-                          });
-                      }
-                  }
-              } catch (error) {
-                  console.error(`[🚨 통신 에러] STT 서버에 도달하지 못했습니다.`, error);
-              }
-          }
-      };
-
-      mediaRecorder.start();
-
-      recorderIntervalRef.current = setInterval(() => {
-          if (mediaRecorder.state === "recording") {
-              mediaRecorder.stop(); 
-              mediaRecorder.start();
-          }
-      }, 15000);
-
-      return () => {
-          if (recorderIntervalRef.current) clearInterval(recorderIntervalRef.current);
-          if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
-      };
-  }, [localStream, isMicOn, userId, sessionData?.mentoringId, role, userName]);
 
   // 실제 채팅 서버(4001번) 연결 로직
   useEffect(() => {
