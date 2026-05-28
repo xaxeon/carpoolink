@@ -49,6 +49,11 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
     // 1. Whisper STT
     const text = await transcribeAudio(audioFile);
 
+    // 너무 짧거나 명백한 할루시네이션 필터링
+    if (!text || text.trim().length < 2) {
+      return res.json({ text: '', chunkIndex: parseInt(chunkIndex) });
+    }
+
     const commandType = detectCommand(text);
     if (commandType) {
       console.log(`[COMMAND] ${commandType} - "${text}"`);
@@ -217,7 +222,7 @@ router.get("/mentoring/:mentoringId", async (req, res) => {
       include: {
         user: true // 데이터베이스 상의 실제 유저 정보를 그대로 가져옵니다.
       },
-      orderBy: { scriptId: "asc" } 
+      orderBy: { scriptId: "asc" }
     });
 
     console.log(`[📊 DB 조회 성공] 실제 데이터 ${scripts.length}개를 정규화 변환합니다.`);
@@ -243,7 +248,7 @@ router.get("/mentoring/:mentoringId", async (req, res) => {
 
       // DB에 실존하는 유저의 실제 nickname과 role을 추출하고, 없을 경우에만 예외 기본값을 부여합니다.
       const realNickname = s.user?.nickname || "알 수 없음";
-      const realRole = s.user?.role || "MENTEE"; 
+      const realRole = s.user?.role || "MENTEE";
 
       return {
         scriptId: s.scriptId.toString(),
@@ -277,9 +282,9 @@ router.get("/mentoring/:mentoringId", async (req, res) => {
 
   } catch (err) {
     console.error("🚨 [STT 서비스 최종 핸들러 크래시]:", err);
-    return res.status(500).json({ 
-      success: false, 
-      error: err.message 
+    return res.status(500).json({
+      success: false,
+      error: err.message
     });
   }
 });
