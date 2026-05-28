@@ -305,21 +305,23 @@ export async function handleConnection(socket, io) {
                 console.log(`✅ [Question Saved] 질문 테이블 등록 완료 (ID: ${savedQuestion.questionId})`);
 
                 io.to(roomName).emit('question:registered', {
-                    questionId: savedQuestion.questionId.toString(),
-                    mentoringId: state.mentoringId.toString(),
-                    content,
-                    isPaid: savedQuestion.isPaid,
-                    isPrivate: savedQuestion.isPrivate,
-                    priorityScore: savedQuestion.priorityScore,
-                    status: savedQuestion.status,
-                    createdAt: savedQuestion.createdAt,
-                    user: savedQuestion.user
-                        ? {
-                            userId: savedQuestion.user.userId.toString(),
-                            nickname: savedQuestion.user.nickname,
-                        }
-                        : null,
-                    answerer: null,
+                    question: {
+                        questionId: savedQuestion.questionId.toString(),
+                        mentoringId: state.mentoringId.toString(),
+                        content,
+                        isPaid: savedQuestion.isPaid,
+                        isPrivate: savedQuestion.isPrivate,
+                        priorityScore: savedQuestion.priorityScore,
+                        status: savedQuestion.status,
+                        createdAt: savedQuestion.createdAt,
+                        user: savedQuestion.user
+                            ? {
+                                userId: savedQuestion.user.userId.toString(),
+                                nickname: savedQuestion.user.nickname,
+                            }
+                            : null,
+                        answerer: null,
+                    },
                 });
             }
 
