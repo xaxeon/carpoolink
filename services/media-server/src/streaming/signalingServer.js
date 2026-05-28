@@ -283,6 +283,41 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                         result = { resumed: true };
                         break;
                     }
+                    case 'pauseMenteeConsumers': {
+                        const context = socketContext.get(socket.id);
+
+                        if (!context) {
+                            throw new Error('joinMentoring이 먼저 호출되어야 합니다.');
+                        }
+
+                        if (context.role !== 'MENTOR') {
+                            throw new Error('멘토만 멘티의 음성 수신을 제어할 수 있습니다.');
+                        }
+
+                        await mediaOrchestrator.pauseMenteeConsumers(
+                            context.mentoringId,
+                            data.exceptUserId ?? null
+                        );
+
+                        result = { paused: true };
+                        break;
+                    }
+                    case 'resumeMenteeConsumers': {
+                        const context = socketContext.get(socket.id);
+
+                        if (!context) {
+                            throw new Error('joinMentoring이 먼저 호출되어야 합니다.');
+                        }
+
+                        if (context.role !== 'MENTOR') {
+                            throw new Error('멘토만 멘티의 음성 수신을 제어할 수 있습니다.');
+                        }
+
+                        await mediaOrchestrator.resumeMenteeConsumers(context.mentoringId);
+
+                        result = { resumed: true };
+                        break;
+                    }
                     case 'listProducers': {
                         const context = socketContext.get(socket.id);
 
