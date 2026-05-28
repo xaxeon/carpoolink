@@ -3,6 +3,7 @@ import { prisma } from '@carpoolink/database';
 import { requireUser } from '../middleware/requireUser.js';
 import { serialize } from '../utils/serialize.js';
 import { emitQuestionEvent } from '../lib/questionEventBridge.js';
+import axios from 'axios';
 
 const router = Router();
 
@@ -654,6 +655,119 @@ router.post('/:id/join', requireUser, async (req, res, next) => {
 
         res.json({ success: true });
     } catch (error) {
+        next(error);
+    }
+});
+
+// [POST] /mentorings/:id/recommendations - AI 맞춤 질문 추천 (question-service 중계)
+router.post('/:id/recommendations', requireUser, async (req, res, next) => {
+    try {
+        // 1. 멘티 권한 및 파라미터 검증
+        if (req.user.role !== 'MENTEE') {
+            return res.status(403).json({ message: '멘티만 질문 추천을 받을 수 있습니다.' });
+        }
+
+        const mentoringId = parseBigIntId(req.params.id);
+        if (!mentoringId) {
+            return res.status(400).json({ message: '유효하지 않은 mentoringId입니다.' });
+        }
+
+        const { chats = [], excludeQuestions = [] } = req.body;
+
+        // 2. DB 조회: 멘토링 세션 및 방장(멘토) 프로필, 분야(Fields)
+        const mentoringSession = await prisma.mentoring.findUnique({
+            where: { mentoringId },
+            include: {
+                hostMentor: {
+                    include: {
+                        mentorProfile: {
+                            include: { fields: true },
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!mentoringSession) {
+            return res.status(404).json({ message: '존재하지 않는 멘토링 세션입니다.' });
+        }
+
+        // 3. DB 조회: 멘티 프로필 및 사전 설문 결과
+        const menteeProfile = await prisma.mentee.findUnique({
+            where: { userId: req.user.userId },
+            include: { surveyResult: true },
+        });
+
+        // 4. DB 조회: STT 스크립트 추출 (최근 3개)
+        const recentScripts = await prisma.script.findMany({
+            where: { mentoringId },
+            orderBy: { createdAt: 'desc' }, 
+            take: 3,
+        });
+
+        // 5. 컨텍스트 데이터 조립 (STT 스크립트 + 프론트엔드가 보낸 채팅)
+        const formattedScripts = recentScripts
+            .reverse() // 최신순으로 가져왔으므로 다시 시간순으로 정렬
+            // 스키마에 따라 content 또는 text 필드 사용 (여기서는 content로 가정)
+            .map(s => `멘토 (음성인식): ${s.content?.text || s.content || ''}`) 
+            .join('\n');
+
+        const formattedChats = Array.isArray(chats)
+            ? chats.map(c => `${c.author}: ${c.content}`).join('\n')
+            : '';
+
+        const excludeText = excludeQuestions.length > 0 
+            ? `\n[주의 및 지시사항]\n아래 질문들은 이전에 이미 추천된 질문입니다. 반드시 아래 내용과 겹치지 않는 완전히 새로운 질문을 생성하세요:\n${excludeQuestions.map(q => `- ${q}`).join('\n')}`
+            : '';
+
+        const dynamicContext = `
+[최근 멘토 설명 내용 (STT)]
+${formattedScripts || '최근 음성 인식 데이터가 없습니다.'}
+
+[최근 참여자 채팅 흐름]
+${formattedChats || '최근 채팅 데이터가 없습니다.'}
+${excludeText}
+`.trim();
+
+        // 6. Payload 조립 (question-service 규격)
+        const hostUser = mentoringSession.hostMentor;
+        const hostMentorProfile = hostUser?.mentorProfile;
+
+        const payload = {
+            sessionId: Number(mentoringId),
+            topic: mentoringSession.title,
+            context: dynamicContext,
+            count: 3,
+            mentee: {
+                id: String(req.user.userId),
+                level: menteeProfile?.surveyResult?.title || 'beginner',
+                interests: menteeProfile?.surveyResult?.combinationCode
+                    ? [menteeProfile.surveyResult.combinationCode]
+                    : ['software engineering'],
+                goals: [mentoringSession.title],
+            },
+            mentor: {
+                id: String(mentoringSession.userId),
+                expertise: hostMentorProfile?.fields?.map(f => f.fieldName) || ['software engineering'],
+                role: hostMentorProfile?.bio || 'MENTOR',
+            },
+        };
+
+        // 7. 마이크로서비스(question-service)로 요청 위임
+        const QUESTION_SERVICE_URL = process.env.QUESTION_SERVICE_URL || 'http://localhost:4003';
+        const response = await axios.post(`${QUESTION_SERVICE_URL}/api/questions/recommendations`, payload);
+
+        // 8. 성공 시 결과 반환 (BigInt 직렬화를 위해 serialize 사용)
+        return res.json(serialize(response.data));
+
+    } catch (error) {
+        console.error('🚨 Core API - AI 추천 중계 실패:', error?.response?.data || error.message);
+        
+        if (error.response) {
+            return res.status(error.response.status).json({
+                message: error.response.data?.message || '추천 서비스 통신 오류',
+            });
+        }
         next(error);
     }
 });
