@@ -92,6 +92,10 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [clusters, setClusters] = useState<any[]>([]);
     const [isClustering, setIsClustering] = useState(false);
 
+    // 질문 ID별 랭킹 점수를 저장할 상태
+    const [questionRankings, setQuestionRankings] = useState<Record<string, number>>({});
+    const [isRanking, setIsRanking] = useState(false);
+
     // 실시간 텍스트 변환 내역들을 누적 보관할 런타임 상태
     const [scriptSegments, setScriptSegments] = useState<STTScript[]>([]);
     const chunkIndexRef = useRef<number>(0);
@@ -274,88 +278,190 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         return scriptSegments[scriptSegments.length - 1].text;
     }, [scriptSegments]);
 
-    // 활성화된 질문이 바뀔 때마다 클러스터링 API 호출 (1초 디바운스 적용)
+    // [클러스터링 & 랭킹] 단일 직렬화 파이프라인 통합 엔진
     useEffect(() => {
         if (activeQuestions.length === 0) {
             setClusters([]);
+            setQuestionRankings({});
             return;
         }
 
         const timer = setTimeout(async () => {
             setIsClustering(true);
+            setIsRanking(true);
             try {
-                // question-service의 주소 (환경변수 설정 전이면 4003 포트 하드코딩)
                 const QUESTION_SERVICE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4003";
                 
-                const response = await fetch(`${QUESTION_SERVICE_URL}/question/api/question-clustering/cluster`, {
+                // 1. 실시간 STT 맥락 데이터 가공 (최근 발화 5개 문장 결합)
+                const currentSTTSection = scriptSegments
+                    .slice(-5)
+                    .map(s => s.text)
+                    .join(" ")
+                    .trim();
+
+                // 2. 질문 데이터 전송 안정성 확보 및 trim 처리
+                const safeQuestions = activeQuestions.map(q => ({
+                    id: String(q.id),
+                    text: q.content?.trim() || "질문 내용 없음",
+                    isPaid: q.isPaid || false
+                }));
+
+                // STEP 1: 클러스터링(Clustering) API 호출
+                let currentClusters: any[] = [];
+                try {
+                    const clusterRes = await fetch(`${QUESTION_SERVICE_URL}/question/api/question-clustering/cluster`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            questions: safeQuestions // 안전성이 확보된 질문 목록 주입
+                        })
+                    });
+
+                    if (clusterRes.ok) {
+                        const clusterData = await clusterRes.json();
+                        currentClusters = clusterData.clusters || [];
+                        // 기존에 사용하던 상태 업데이트 그대로 유지
+                        setClusters(currentClusters); 
+                    }
+                } catch (e) {
+                    console.error("🚨 클러스터링 API 호출 에러:", e);
+                }
+
+                // STEP 2: 완성된 클러스터 결과를 랭킹(Ranking) 요청
+                const payload: any = {
+                    sessionTopic: "실시간 라이브 멘토링 세션",
+                    currentScriptSection: currentSTTSection || "멘토링이 활발하게 진행 중입니다.",
+                    questions: safeQuestions
+                };
+
+                // STEP 1의 클러스터링 응답 데이터가 정상 확보되었을 경우에만 400 에러를 방지하며 주입
+                if (currentClusters.length > 0) {
+                    payload.clustering = {
+                        question_count: activeQuestions.length,
+                        cluster_count: currentClusters.length,
+                        threshold: 0.5,
+                        similarity_mode: "rule",
+                        clusters: currentClusters.map((c, idx) => ({
+                            cluster_id: `cluster_${idx + 1}`,
+                            representative_question_id: String(c.representative_question_id),
+                            representative_question: c.representative_question?.trim() || "내용 없음",
+                            member_questions: (c.member_questions || []).map((m: any) => ({
+                                question_id: String(m.question_id || m.id || m),
+                                text: (m.text || m.content || "").trim() || "내용 없음"
+                            }))
+                        }))
+                    };
+                }
+
+                // 랭킹 API 엔드포인트 전송 (/api/questions/rank)
+                const rankRes = await fetch(`${QUESTION_SERVICE_URL}/question/api/questions/rank`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        // API 스펙에 맞게 데이터 변환
-                        questions: activeQuestions.map(q => ({
-                            id: String(q.id),
-                            text: q.content,
-                            isPaid: q.isPaid
-                        }))
-                    })
+                    body: JSON.stringify(payload)
                 });
 
-                if (response.ok) {
-                    const data = await response.json();
-                    setClusters(data.clusters || []);
+                if (rankRes.ok) {
+                    const rankData = await rankRes.json();
+                    
+                    // 백엔드가 정확히 어떤 구조로 주는지 콘솔에 원본 출력
+                    console.log("🔍 [랭킹 API 원본 응답 데이터]:", rankData);
+
+                    const newRankings: Record<string, number> = {};
+                    
+                    const rankArray = rankData.rankedQuestions || [];
+
+                    if (Array.isArray(rankArray)) {
+                        rankArray.forEach((item: any) => {
+                            const qId = String(item.id);
+                            
+                            // (priorityScore가 없을 경우 answerabilityScore를 예비로 사용)
+                            const qScore = Number(item.priorityScore || item.answerabilityScore || 0);
+                            
+                            newRankings[qId] = qScore;
+                        });
+                    }
+                    setQuestionRankings(newRankings);
+                } else {
+                    const errData = await rankRes.json();
+                    console.error("🚨 [Ranking API 400 에러 사유]:", errData.message || errData);
                 }
             } catch (error) {
-                console.error("클러스터링 API 호출 에러:", error);
+                console.error("🚨 [전체 실시간 연동 파이프라인 네트워크 크래시]:", error);
             } finally {
                 setIsClustering(false);
+                setIsRanking(false);
             }
-        }, 1000); // 1초 대기 후 호출하여 서버 부하 방지
+        }, 800); // 0.8초 디바운스 딜레이
 
         return () => clearTimeout(timer);
-    }, [activeQuestions]);
+    // 의존성 배열에 activeQuestions와 scriptSegments(STT 자막 전송 감지)만 남겨서 데이터 흐름을 정형화합니다.
+    }, [activeQuestions, scriptSegments]);
 
-    // [질문 큐 생성] 검증된 questions 상태 및 클러스터링 결과를 바탕으로 큐를 생성합니다.
+    // 유료 가중치 최우선 배정 후, AI questionRanking 점수 순 정렬 파이프라인
     const questionQueue = useMemo(() => {
-        // 아직 클러스터링이 완료되지 않았거나 에러가 났다면 원본을 임시로 보여줍니다.
+        // 클러스터링 결과가 아직 없거나 대기 중일 때의 예외 방어 정렬
         if (clusters.length === 0 && activeQuestions.length > 0) {
-            const paid = activeQuestions.filter(q => q.isPaid);
-            const free = activeQuestions.filter(q => !q.isPaid);
-            return [...paid, ...free];
+            return [...activeQuestions].sort((a, b) => {
+                if (a.isPaid && !b.isPaid) return -1;
+                if (!a.isPaid && b.isPaid) return 1;
+                
+                const scoreA = questionRankings[String(a.id)] || 0;
+                const scoreB = questionRankings[String(b.id)] || 0;
+                return scoreB - scoreA; // 점수 내림차순
+            });
         }
 
-        // 클러스터 결과를 순회하며 화면에 띄울 대표 질문 객체를 만듭니다.
+        // 클러스터 결과를 순회하며 화면에 띄울 대표 질문 객체 생성
         const mappedQueue = clusters.map(cluster => {
             const repId = Number(cluster.representative_question_id);
-            // 원본 질문에서 작성자 정보 등을 가져옵니다.
             const originalQ = activeQuestions.find(q => q.id === repId) || activeQuestions[0];
 
             return {
                 ...originalQ,
                 id: repId,
-                content: cluster.representative_question, // AI가 다듬은 대표 질문 텍스트
-                clusterSize: cluster.member_questions?.length || 1, // 묶인 질문 개수
+                content: cluster.representative_question, // AI 정제 텍스트
+                clusterSize: cluster.member_questions?.length || 1, 
             } as Question;
         });
 
-        // 1. 유료 질문이 포함된 클러스터 최우선, 2. 일반 클러스터 순으로 정렬
-        const paidQuestions = mappedQueue.filter(q => q.isPaid);
-        const freeQuestions = mappedQueue.filter(q => !q.isPaid);
+        // 최종 하이브리드 정렬 실행
+        return mappedQueue.sort((a, b) => {
+            // 규칙 1: 유료 질문이 무조건 최상단 노출
+            if (a.isPaid && !b.isPaid) return -1;
+            if (!a.isPaid && b.isPaid) return 1;
 
-        return [...paidQuestions, ...freeQuestions];
-    }, [clusters, activeQuestions]);
+            // 규칙 2: 동일 등급 내에서는 rank API가 산출한 score 기반 정렬
+            const scoreA = questionRankings[String(a.id)] || 0;
+            const scoreB = questionRankings[String(b.id)] || 0;
+            return scoreB - scoreA;
+        });
+    }, [clusters, activeQuestions, questionRankings]);
 
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
     const currentQuestion = questionQueue[currentIdx];
 
     // 질문 목록(questionQueue)의 길이가 줄어들거나 변경될 때 인덱스를 안전하게 가리키도록 동기화
+    // 실시간 AI 랭킹 정렬 및 인덱스 유동적 동기화 엔진
     useEffect(() => {
+        // 1. 대기 중인 큐가 없으면 인덱스는 무조건 0번 고정
         if (questionQueue.length === 0) {
             setCurrentIdx(0);
-        } else if (currentIdx >= questionQueue.length) {
-            // 길이를 초과할 경우 안전하게 마지막 질문 카드를 가리키도록 보정 (-1 추가)
+            return;
+        }
+
+        // 현재 질문을 소리 내어 '읽는 중(isReading === true)'이 아니라면
+        // AI가 실시간 맥락을 분석해 배치한 가장 우선순위가 높은 1등 질문(0번 인덱스)을 화면에 즉시 노출.
+        if (!isReading) {
+            setCurrentIdx(0);
+            return;
+        }
+
+        // 3. 만약 질문을 읽으며 답변 중인데 큐가 변해서 인덱스가 범위를 초과했다면 안전하게 마지막 카드로 보정
+        if (currentIdx >= questionQueue.length) {
             setCurrentIdx(questionQueue.length - 1);
         }
-    }, [questionQueue.length, currentIdx]);
+    // 의존성 배열에 questionQueue 자체를 감시하여, 실시간 랭킹 점수 변동으로 순서가 뒤바뀔 때마다 즉각 반응하게 만듭니다.
+    }, [questionQueue, isReading]);
 
     // [채팅 소켓 설정]
     useEffect(() => {
@@ -613,7 +719,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         );
     }
 
-    // 메인 라이브 화면 UI (기존과 동일)
+    // 메인 라이브 화면 UI
     return (
         <main className="flex flex-col w-full h-[100dvh] bg-[#161616] text-white font-sans overflow-hidden relative">
             {/* ... 헤더, 질문카드, 비디오, 채팅창, 푸터 UI 코드 ... */}
@@ -640,62 +746,89 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
                     {/* 질문 카드 영역 */}
                     {isLoadingQuestions ? (
-                        // 1. 로딩 중 상태
                         <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl bg-[#222222] text-white flex items-center justify-center min-h-[120px]">
                             <div className="w-6 h-6 border-2 border-[#FFCC00]/30 border-t-[#FFCC00] rounded-full animate-spin"></div>
                         </div>
                     ) : currentQuestion ? (
-                        // 2. 대기 중인 질문이 있을 때
-                        <div className={`w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-xl flex justify-between gap-4 transition-all duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
-                            <div className="flex flex-col gap-3 flex-1">
-                                <div className="flex items-center justify-between w-full">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">
-                                            {currentQuestion?.avatar}
-                                        </div>
-                                        <span className="font-bold text-[14px]">{currentQuestion?.author}</span>
-                                        {/* 질문 순서 표시 */}
-                                        <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1">
-                                            {currentIdx + 1} / {questionQueue.length}
-                                        </span>
-
-                                        {/* 비슷한 질문 묶음 크기 표시 뱃지 */}
-                                        {currentQuestion?.clusterSize && currentQuestion.clusterSize > 1 && (
-                                            <span className="text-[11px] font-extrabold bg-blue-100 text-blue-700 px-2 py-1 rounded-md border border-blue-200 flex items-center shadow-sm ml-1">
-                                                🔥 +{currentQuestion.clusterSize - 1}
+                        <div className="flex flex-col mb-4">
+                            {/* 1. 메인 질문 카드 */}
+                            <div 
+                                key={currentQuestion.id} // 카드가 바뀔 때마다 확실하게 리렌더링 애니메이션이 발생하도록 고유 Key 부여
+                                className={`w-full rounded-[24px] p-5 shrink-0 shadow-xl flex justify-between gap-4 animate-in fade-in zoom-in-95 duration-300 ${currentQuestion?.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}
+                            >
+                                <div className="flex flex-col gap-3 flex-1">
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center text-sm">
+                                                {currentQuestion?.avatar}
+                                            </div>
+                                            <span className="font-bold text-[14px]">{currentQuestion?.author}</span>
+                                            
+                                            {/* 1 / 총질문개수 형태로 표기 (currentIdx에 따라 유동적으로 변함) */}
+                                            <span className="text-[11px] font-bold bg-black/5 px-2 py-1 rounded-md ml-1 tracking-widest">
+                                                1위
                                             </span>
+
+                                            {currentQuestion?.clusterSize && currentQuestion.clusterSize > 1 && (
+                                                <span className="text-[11px] font-extrabold bg-blue-100 text-blue-700 px-2 py-1 rounded-md border border-blue-200 flex items-center shadow-sm ml-1">
+                                                    🔥+{currentQuestion.clusterSize - 1}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {currentQuestion?.isPrivate && (
+                                            <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
+                                                <Lock className="w-3 h-3" strokeWidth={3} /> 비공개
+                                            </div>
                                         )}
                                     </div>
-                                    {currentQuestion?.isPrivate && (
-                                        <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded-lg">
-                                            <Lock className="w-3 h-3" strokeWidth={3} /> 비공개 질문
-                                        </div>
-                                    )}
+                                    <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
                                 </div>
-                                <p className="font-extrabold text-[16px] leading-snug">{currentQuestion?.content}</p>
+                                
+                                <div className="flex flex-col gap-2 shrink-0 justify-center">
+                                    <button
+                                        onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))}
+                                        className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
+                                    >
+                                        <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
+                                        {isReading ? '읽는 중...' : '질문 읽기'}
+                                    </button>
+                                    <button
+                                        onClick={() => completeQuestion(Number(currentQuestion?.id))}
+                                        className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
+                                    >
+                                        답변 완료
+                                    </button>
+                                </div>
                             </div>
-                            {/* 질문 카드 우측 버튼 영역 */}
-                            <div className="flex flex-col gap-2 shrink-0 justify-center">
-                                {/* onClick에 acknowledgeQuestion(답변 시작) 함수 연결 */}
-                                <button
-                                    onClick={() => acknowledgeQuestion(Number(currentQuestion?.id))}
-                                    className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
-                                >
-                                    <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
-                                    {isReading ? '읽는 중...' : '질문 읽기'}
-                                </button>
 
-                                {/* onClick에 completeQuestion(답변 완료) 함수 연결 */}
-                                <button
-                                    onClick={() => completeQuestion(Number(currentQuestion?.id))}
-                                    className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
-                                >
-                                    답변 완료
-                                </button>
-                            </div>
+                            {/* 2. 시각적 랭킹 확인을 위한 '실시간 다음 대기열' 리스트 추가 렌더링 */}
+                            {questionQueue.length > 1 && (
+                                <div className="w-full bg-[#1A1A1A] border border-gray-800 rounded-xl p-3 mt-2 flex flex-col gap-2 animate-in fade-in duration-500">
+                                    <p className="text-xs font-bold text-gray-500 mb-1 flex items-center">
+                                        <span className="flex items-center">
+                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></span>
+                                            실시간 AI 랭킹 대기열 (멘토 발화 맥락 연동 중)
+                                        </span>
+                                        {/* 💡 [추가]: 현재 대기열에 쌓인 전체 질문 개수 렌더링 */}
+                                        <span className="text-[11px] text-gray-400 font-extrabold bg-gray-800/50 px-2 py-0.5 rounded-md border border-gray-800">
+                                            총 {questionQueue.length}개
+                                        </span>
+                                    </p>
+                                    {/* 실시간 랭킹 2위~3위까지 2개 렌더링 */}
+                                    {questionQueue.slice(1, 3).map((q, idx) => (
+                                        <div key={q.id} className="flex items-center gap-3 opacity-70 hover:opacity-100 transition-all duration-300">
+                                            <span className="text-[10px] font-extrabold bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded border border-gray-700">
+                                                {idx + 2}위
+                                            </span>
+                                            <p className="text-[12px] text-gray-300 truncate flex-1">{q.content}</p>
+                                            {q.isPaid && <span className="text-[10px] bg-[#FFCC00] text-black px-1.5 rounded font-bold">유료</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     ) : (
-                        // 3. 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
+                        // 대기 중인 질문이 없을 때의 빈 상태(Empty State) UI
                         <div className="w-full rounded-[24px] p-5 mb-4 shrink-0 shadow-sm border border-gray-800 bg-[#1A1A1A] text-gray-400 flex flex-col items-center justify-center min-h-[120px]">
                             <MessageSquare className="w-6 h-6 mb-2 opacity-50" />
                             <p className="text-sm font-medium">현재 대기 중인 질문이 없습니다.</p>
