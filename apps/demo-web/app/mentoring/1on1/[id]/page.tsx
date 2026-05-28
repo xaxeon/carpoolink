@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Mic, MicOff, Volume2, VolumeX, Send, PhoneOff } from "lucide-react";
-import { io, Socket } from "socket.io-client"; // 💡 Socket.IO 추가
+import { io, Socket } from "socket.io-client";
 import { useMentoringSession } from "@/hooks/useMentoringSession";
 import { useWebRtcSession } from "@/hooks/useWebRtcSession";
 
@@ -12,12 +12,20 @@ interface ChatMessage {
   text: string;
 }
 
+// 음성 발화 데이터 관리 STT 인터페이스
+interface ScriptSegment {
+  scriptId: string;
+  chunkIndex: number;
+  text: string;
+  speakerName: string;
+  speakerRole: string;
+  timestamp: number;
+}
+
 export default function PrivateMentoringPage() {
   const [role, setRole] = useState<string>("MENTEE");
   const [userId, setUserId] = useState<number>(2);
-  const [userName, setUserName] = useState<string>("익명"); // 💡 유저 이름 상태 추가
-
-  // 💡 [추가] 상대방 닉네임을 담을 새로운 상태
+  const [userName, setUserName] = useState<string>("익명");
   const [opponentNickname, setOpponentNickname] = useState<string>("상대방 연결 대기 중...");
 
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
@@ -28,10 +36,15 @@ export default function PrivateMentoringPage() {
   const [chatInput, setChatInput] = useState("");
   const [elapsedTime, setElapsedTime] = useState(0);
 
-  // 💡 실시간 채팅 상태
+  // 실시간 채팅 상태
   const [chatSocket, setChatSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]); // 더미 데이터 제거
   const [isChatClosed, setIsChatClosed] = useState(false);
+
+  // 순수 음성 STT 스크립트 상태 배열
+  const [scriptSegments, setScriptSegments] = useState<ScriptSegment[]>([]);
+  const chunkIndexRef = useRef<number>(0);
+  const recorderIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const storedRole = localStorage.getItem("userRole")?.toUpperCase();
@@ -48,20 +61,38 @@ export default function PrivateMentoringPage() {
   const { sessionData, isLoading, error, isConnected, peerId, socket, endMentoring } =
     useMentoringSession({ role, userId });
 
-  // 2. WebRTC 1:1 오디오 세션 연결
-  const { isMicOn, setMicOn, remoteStreams, isReady, error: webRtcError } =
-    useWebRtcSession({
-      socket,
-      mentoringId: sessionData?.mentoringId?.toString() || "",
-      peerId: peerId || "",
-      role,
-      mentoringType: "ONE_ON_ONE", // 💡 1:1 멘토링 타입 명시
-      isJoined: isConnected, // 💡 멘토링 세션에 실제로 연결된 상태를 WebRTC 훅에 전달
-    });
+  // 1:1 오디오 전용 방을 위한 비디오 트랙 에러 우회 처리
+  const webRtcArgs = useMemo(() => ({
+    socket,
+    mentoringId: sessionData?.mentoringId?.toString() || "",
+    peerId: peerId || "",
+    role,
+    mentoringType: "ONE_ON_ONE" as const, 
+    isJoined: isConnected, 
+  }), [socket, sessionData?.mentoringId, peerId, role, isConnected]);
+
+  const webRtcSession = useWebRtcSession(webRtcArgs);
+
+  const localStream = webRtcSession.localStream;
+  const isMicOn = webRtcSession.isMicOn;
+  const setMicOn = webRtcSession.setMicOn;
+  const remoteStreams = webRtcSession.remoteStreams;
+  const isReady = webRtcSession.isReady;
+  
+  // 비디오 트랙 미검출 에러 발생 시 앱이 크래시되지 않도록 마스킹 처리
+  const webRtcError = useMemo(() => {
+    if (!webRtcSession.error) return null;
+    const errMsg = String(webRtcSession.error);
+    if (errMsg.includes("비디오 트랙") || errMsg.includes("video track") || errMsg.includes("produceVideo")) {
+      console.log("ℹ️ [WebRTC 방어]: 오디오 전용 세션이므로 비디오 트랙 에러를 무시합니다.");
+      return null;
+    }
+    return webRtcSession.error;
+  }, [webRtcSession.error]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 💡 [추가] 내가 누구냐에 따라 기본 상대방 이름 세팅
+  // 접속한 사용자에 따라 기본 상대방 이름 세팅
   useEffect(() => {
     if (sessionData) {
       if (role === "MENTEE") {
@@ -74,16 +105,107 @@ export default function PrivateMentoringPage() {
     }
   }, [sessionData, role]);
 
-  // 💡 [추가] 실제 채팅 서버(4001번) 연결 로직
+  // 1:N STT 수집 로직
+  useEffect(() => {
+      const mentoringIdStr = sessionData?.mentoringId?.toString();
+
+      // 1:1 오디오 방 조건 적용: localStream(마이크)만 추적
+      if (!localStream) {
+          console.warn("[🎙️ STT 모니터링] localStream이 존재하지 않아 대기 중입니다.");
+          return;
+      }
+      if (!isMicOn) {
+          console.log("[🎙️ STT 모니터링] 마이크가 꺼져있어 STT 수집을 중단합니다.");
+          return;
+      }
+      if (!userId || !mentoringIdStr) return;
+
+      const audioTracks = localStream.getAudioTracks();
+      if (audioTracks.length === 0) return;
+
+      console.log(`[✅ 마이크 인식 성공] 장치명: "${audioTracks[0].label}"`);
+
+      const audioStream = new MediaStream(audioTracks);
+      const mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm;codecs=opus" });
+
+      mediaRecorder.onstart = () => {
+          console.log(`[🚀 레코더 시작] 발화자(${role}: ${userName})의 오디오 데이터 수집 시작`);
+      };
+
+      mediaRecorder.ondataavailable = async (event) => {
+          if (event.data && event.data.size > 0) {
+              const audioBlob = event.data;
+              const currentIndex = chunkIndexRef.current;
+              chunkIndexRef.current += 1;
+
+              const formData = new FormData();
+              formData.append("audio", audioBlob, `chunk_${currentIndex}.webm`);
+              formData.append("userId", String(userId));
+              formData.append("mentoringId", String(mentoringIdStr));
+              formData.append("chunkIndex", String(currentIndex));
+              // STT 서버가 DB에 저장할 때 구분할 수 있도록 발화자 정보 전송
+              formData.append("speakerRole", role);
+              formData.append("speakerName", userName);
+
+              try {
+                  const STT_SERVER_URL = process.env.NEXT_PUBLIC_STT_BASE_URL || "http://localhost:4004";
+                  const response = await fetch(`${STT_SERVER_URL}/audio/stt/chunk`, {
+                      method: "POST",
+                      body: formData, 
+                  });
+
+                  if (response.ok) {
+                      const data = await response.json();
+                      if (data && typeof data.text === 'string' && data.text.trim() !== "") {
+                          console.log(`[📝 AI Whisper 변환 결과 (${userName})]: "${data.text}"`);
+                          
+                          const newSegment: ScriptSegment = {
+                              scriptId: data.scriptId || String(Date.now()),
+                              chunkIndex: currentIndex,
+                              text: data.text,
+                              speakerName: userName,
+                              speakerRole: role,
+                              timestamp: Date.now()
+                          };
+
+                          // 프론트는 1:N 멘토링처럼 화면에 자막만 렌더링하고 끝! (DB 저장은 STT 서버의 몫)
+                          setScriptSegments((prev) => {
+                              const filtered = prev.filter(p => p.chunkIndex !== currentIndex);
+                              return [...filtered, newSegment].sort((a, b) => a.chunkIndex - b.chunkIndex);
+                          });
+                      }
+                  }
+              } catch (error) {
+                  console.error(`[🚨 통신 에러] STT 서버에 도달하지 못했습니다.`, error);
+              }
+          }
+      };
+
+      mediaRecorder.start();
+
+      recorderIntervalRef.current = setInterval(() => {
+          if (mediaRecorder.state === "recording") {
+              mediaRecorder.stop(); 
+              mediaRecorder.start();
+          }
+      }, 15000);
+
+      return () => {
+          if (recorderIntervalRef.current) clearInterval(recorderIntervalRef.current);
+          if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      };
+  }, [localStream, isMicOn, userId, sessionData?.mentoringId, role, userName]);
+
+  // 실제 채팅 서버(4001번) 연결 로직
   useEffect(() => {
     const mentoringIdStr = sessionData?.mentoringId?.toString();
     if (!mentoringIdStr || !userId) return;
 
     // 배포 환경이면 Nginx 라우팅, 로컬이면 4001번 포트로 연결
-    const SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4001";
+    const CHAT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4001";
     const socketPath = "/chat/socket.io";
 
-    const newChatSocket = io(SERVER_URL, {
+    const newChatSocket = io(CHAT_SERVER_URL, {
       path: socketPath,
       withCredentials: true,
       transports: ["websocket", "polling"],
@@ -108,7 +230,7 @@ export default function PrivateMentoringPage() {
       });
     });
 
-    // 💡 [추가] 상대방이 접속했을 때 실시간으로 이름표 업데이트
+    // 상대방이 접속했을 때 실시간으로 이름표 업데이트
     newChatSocket.on("user_joined", (data: any) => {
       console.log("👋 상대방 입장 이벤트 수신:", data);
 
@@ -120,7 +242,7 @@ export default function PrivateMentoringPage() {
       }
     });
 
-    // 💡 과거 채팅 내역에서 상대방 진짜 이름 가져오기
+    // 과거 채팅 내역에서 상대방 진짜 이름 가져오기
     newChatSocket.on("message_history", (historyData: any[]) => {
       const mapped = historyData.map(m => {
         const isMe = String(m.userId) === String(userId);
@@ -140,7 +262,7 @@ export default function PrivateMentoringPage() {
       setMessages(mapped);
     });
 
-    // 💡 새 메시지가 왔을 때도 상대방 진짜 이름 업데이트
+    // 새 메시지가 왔을 때도 상대방 진짜 이름 업데이트
     newChatSocket.on("new_message", (m: any) => {
       if (String(m.userId) === String(userId)) return;
 
@@ -169,7 +291,7 @@ export default function PrivateMentoringPage() {
     };
   }, [sessionData?.mentoringId, userId, userName, role]); // role 의존성 추가 권장
 
-  // 1. 💡 최적화된 원격 오디오 스트림 수신 및 연결
+  // 1. 최적화된 원격 오디오 스트림 수신 및 연결
   useEffect(() => {
     if (!remoteAudioRef.current || remoteStreams.size === 0) return;
 
@@ -177,7 +299,7 @@ export default function PrivateMentoringPage() {
     const streamArray = Array.from(remoteStreams.values());
     const stream = streamArray[streamArray.length - 1];
 
-    // 🚨 [핵심] 이미 오디오 태그에 같은 스트림이 연결되어 있다면 덮어쓰지 않습니다.
+    // 이미 오디오 태그에 같은 스트림이 연결되어 있다면 덮어쓰지 않습니다.
     // (채팅을 입력할 때마다 srcObject가 재할당되어 미세하게 음성이 끊기는 현상을 원천 차단)
     if (remoteAudioRef.current.srcObject !== stream) {
       remoteAudioRef.current.srcObject = stream;
@@ -187,7 +309,7 @@ export default function PrivateMentoringPage() {
     }
   }, [remoteStreams]);
 
-  // 2. 💡 [추가] 페이지 이탈 시 오디오 자원 완벽 해제 (메모리 누수 및 백그라운드 재생 방지)
+  // 2. 페이지 이탈 시 오디오 자원 완벽 해제 (메모리 누수 및 백그라운드 재생 방지)
   useEffect(() => {
     return () => {
       if (remoteAudioRef.current) {
@@ -196,7 +318,7 @@ export default function PrivateMentoringPage() {
     };
   }, []);
 
-  // ✅ [새로운 타이머 로직] 서버 시간에 맞춰 동기화
+  // [타이머 로직]: 서버 시간에 맞춰 동기화
   useEffect(() => {
     // DB에 시작 시간이 기록되어 있지 않다면 타이머를 돌리지 않음
     if (!sessionData?.startedAt) return;
@@ -240,7 +362,7 @@ export default function PrivateMentoringPage() {
     }
   }, [messages, isChatMode]);
 
-  // 💡 [수정된 채팅 전송 함수]
+  // [채팅 전송 함수]
   const handleSendMessage = () => {
     // 1. 방어 로직 (내용이 없거나, 소켓이 없거나, 방 번호가 없으면 중단)
     if (!chatInput.trim() || !chatSocket || !sessionData?.mentoringId || isChatClosed) {
@@ -255,7 +377,7 @@ export default function PrivateMentoringPage() {
       content: chatInput
     });
 
-    // 3. 💡 핵심: 서버 응답을 기다리지 않고 내 화면에 즉시 메시지 말풍선 띄우기!
+    // 3. 서버 응답을 기다리지 않고 내 화면에 즉시 메시지 말풍선 띄우기
     setMessages(prev => [...prev, {
       id: Date.now(), // 임시 고유 ID 부여
       sender: "me",
@@ -290,7 +412,7 @@ export default function PrivateMentoringPage() {
           </button>
         </div>
 
-        {/* 2. 💡 중앙 영역 (닉네임/시간) - 절대 위치(absolute)로 완벽한 중앙 고정 */}
+        {/* 2. 중앙 영역 (닉네임/시간) */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none w-max">
           <div className="flex items-center gap-2">
             <h1 className="text-[17px] font-extrabold tracking-tight text-[#1A1A1A]">
@@ -303,7 +425,7 @@ export default function PrivateMentoringPage() {
           </span>
         </div>
 
-        {/* 3. 오른쪽 영역 (종료 버튼) - flex-1을 주어 왼쪽과 균형을 맞춤 */}
+        {/* 3. 오른쪽 영역 (종료 버튼) */}
         <div className="flex-1 flex justify-end z-10">
           {role !== "MENTEE" ? (
             <button onClick={() => setIsEndPopupOpen(true)} className="text-red-500 font-bold text-[15px] p-1">
@@ -358,7 +480,7 @@ export default function PrivateMentoringPage() {
                 </div>
               </div>
 
-              {/* 💡 [수정] 중앙 프로필 이름 변경 */}
+              {/* 중앙 프로필 이름 변경 */}
               <h2 className="text-2xl font-extrabold mb-1">{opponentNickname}</h2>
               <p className="text-gray-500 text-[14px]">{isLoading ? "세션 정보를 불러오는 중입니다" : "1:1 멘토링 세션"}</p>
 
