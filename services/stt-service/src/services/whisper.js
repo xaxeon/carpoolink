@@ -11,9 +11,14 @@ const openai = new OpenAI({
 export async function transcribeAudio(audioStream) {
   const transcription = await openai.audio.transcriptions.create({
     file: audioStream,
-    model: "gpt-4o-transcribe",
+    model: "whisper-1",
     language: "ko",
     temperature: 0,
+    response_format: 'verbose_json',
   });
-  return transcription.text;
+  const noSpeechProb = transcription.segments?.[0]?.no_speech_prob ?? 0;
+  if (noSpeechProb > 0.6) {
+    return '';
+  }
+  return transcription.text ?? '';
 }
