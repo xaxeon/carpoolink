@@ -93,6 +93,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [clusters, setClusters] = useState<any[]>([]);
     const [isClustering, setIsClustering] = useState(false);
 
+    // 비공개 모드 UI 상태 관리
+    const [isPrivateMode, setIsPrivateMode] = useState(false);
+
     // 질문 ID별 랭킹 점수를 저장할 상태
     const [questionRankings, setQuestionRankings] = useState<Record<string, number>>({});
     const [isRanking, setIsRanking] = useState(false);
@@ -118,6 +121,50 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
     // useWebRtcSession에서 localStream과 마이크 상태 가져오기
     const { localStream, isCameraOn, isMicOn, setCameraOn, setMicOn, error: webRtcError } = useWebRtcSession(webRtcConfig);
+
+    // 음성 명령어(Voice Command) 시그널 수신 리스너
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleSignal = (message: any) => {
+            // Media 서버(server.js)에서 보낸 'voice-command' 이벤트 감지
+            if (message?.event === 'voice-command') {
+                const { type } = message.data;
+                console.log(`🎤 [Voice Command 수신]: ${type}`);
+
+                switch (type) {
+                    case 'READ_QUESTION':
+                        // 현재 화면에 질문이 있고, 이미 읽고 있는 상태가 아닐 때만 실행
+                        if (currentQuestionRef.current && !isReading) {
+                            console.log("🤖 음성 명령으로 질문 읽기를 시작합니다.");
+                            acknowledgeQuestion(currentQuestionRef.current);
+                        }
+                        break;
+                    case 'START_PRIVATE':
+                        console.log("🔒 음성 명령으로 비공개 송출 모드를 시작합니다.");
+                        setIsPrivateMode(true);
+                        break;
+                    case 'END_PRIVATE':
+                        console.log("🔓 음성 명령으로 비공개 송출 모드를 종료합니다.");
+                        setIsPrivateMode(false);
+                        if (currentQuestionRef.current) {
+                            // 답변 완료 함수를 호출
+                            completeQuestion(currentQuestionRef.current.id); 
+                        }
+                        // resumeMenteeConsumers 시그널 전송
+                        if (sendSignal) {
+                            sendSignal("resumeMenteeConsumers", { mentoringId: Number(mentoringId) });
+                        }
+                        break;
+                }
+            }
+        };
+
+        socket.on('signal', handleSignal);
+        return () => {
+            socket.off('signal', handleSignal);
+        };
+    }, [socket, isReading]); 
 
     // [STT 모니터링 강화] 하드웨어 오디오 스트림 추적 및 전송 로그 추가 파이프라인
     useEffect(() => {
@@ -443,6 +490,12 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
     const currentQuestion = questionQueue[currentIdx];
 
+    // 소켓 리스너 안에서 최신 currentQuestion을 참조하기 위한 Ref
+    const currentQuestionRef = useRef<Question | null>(null);
+    useEffect(() => {
+        currentQuestionRef.current = currentQuestion || null;
+    }, [currentQuestion]);
+
     // 질문 목록(questionQueue)의 길이가 줄어들거나 변경될 때 인덱스를 안전하게 가리키도록 동기화
     // 실시간 AI 랭킹 정렬 및 인덱스 유동적 동기화 엔진
     useEffect(() => {
@@ -641,8 +694,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             const questionText = res.data?.question?.content;
 
             if (questionText) {
+                // 비공개 질문 여부(question.isPrivate)를 확인하여 TTS 안내 멘트를 조립.
+                const ttsText = question.isPrivate 
+                    ? `비공개 질문입니다. ${questionText}` 
+                    : questionText;
+
                 // 백그라운드에서 오디오 재생 함수 실행
-                playQuestionAudio(questionText);
+                playQuestionAudio(ttsText);
             } else {
                 console.error("❌ 질문 텍스트를 찾을 수 없어 TTS를 실행하지 못했습니다.");
             }
