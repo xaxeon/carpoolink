@@ -12,7 +12,7 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
   const [scriptList, setScriptList] = useState<any[]>([]);
 
   // API 연동 상태 관리
-  const [mentoringInfo, setMentoringInfo] = useState<{ title: string; date: string } | null>(null);
+  const [mentoringInfo, setMentoringInfo] = useState<{ title: string; date: string; isGroup?: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +32,7 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
         setMentoringInfo({
           title: mentoring.title,
           date: dateStr,
+          isGroup: mentoring.isGroup,
         });
 
         // DOM을 직접 찌르지 않고 React 상태에 데이터를 안전하게 기록합니다.
@@ -54,41 +55,82 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
   useEffect(() => {
     if (!isLoading && contentRef.current && scriptList.length > 0) {
       const htmlContent = scriptList.map((s: any) => {
-        const timestamp = s.content?.timestamp 
-          ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none">${s.content.timestamp}</span>` 
+        
+        let parsedContent = s.content;
+        if (typeof parsedContent === 'string') {
+          try { parsedContent = JSON.parse(parsedContent); } 
+          catch { parsedContent = { text: parsedContent }; }
+        }
+
+        // 발행 데이터 구조 탐색.
+        const speakerName = s.speaker?.nickname || s.user?.nickname || s.speakerName || parsedContent?.speakerName;
+        const speakerRole = s.speaker?.role || s.user?.role || s.speakerRole || parsedContent?.speakerRole || "MENTEE";
+        
+        // startTime이 null일 경우를 대비해 createdAt(ISO 문자열)을 백업으로 사용합니다.
+        const rawTime = parsedContent?.startTime ?? s.startTime ?? parsedContent?.timestamp ?? s.timestamp ?? s.createdAt;
+
+        // 발화자(Speaker) 뱃지 렌더링
+        let speakerBadge = "";
+        if (mentoringInfo?.isGroup === false && speakerName) {
+          const isMentor = speakerRole === "MENTOR";
+          const roleColor = isMentor ? "text-[#FFCC00] bg-[#FFCC00]/10" : "text-blue-500 bg-blue-50";
+          const roleText = isMentor ? "멘토" : "멘티";
+          
+          speakerBadge = `<span class="text-[11px] font-bold ${roleColor} px-1.5 py-0.5 rounded ml-2 select-none inline-block align-middle">[${roleText}] ${speakerName}</span>`;
+        }
+
+        // 타임스탬프 렌더링
+        let timeString = "";
+        if (rawTime !== undefined && rawTime !== null) {
+          const numTime = Number(rawTime);
+          if (!isNaN(numTime)) {
+            if (numTime > 1000000000000) {
+              const date = new Date(numTime);
+              timeString = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+            } else {
+              timeString = `${parseFloat(rawTime as string).toFixed(1)}s`;
+            }
+          } else if (typeof rawTime === 'string' && rawTime.includes('T')) {
+            // ISO 날짜 문자열(createdAt)인 경우 시:분:초 추출
+            const date = new Date(rawTime);
+            timeString = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+          }
+        }
+        
+        const timestampBadge = timeString 
+          ? `<span class="text-[12px] text-amber-400 font-medium ml-2 select-none inline-block align-middle">${timeString}</span>` 
           : "";
+
+        // 비공개 및 마스킹 처리 후 최종 병합
+        if (parsedContent?.isPrivate || s.isPrivate) {
+          const privateText = parsedContent?.text || "비공개 질문입니다.";
+          return `<div class="mb-1.5 leading-relaxed text-gray-400 italic">🔒 <span>${privateText}</span>${speakerBadge}${timestampBadge}</div>`;
+        }
 
         let textHTML = "";
 
-        // 비공개 처리 분기
-        if (s.content?.isPrivate || s.isPrivate) {
-          const privateText = s.content?.text || "비공개 질문입니다.";
-          return `<div class="text-gray-400 italic">🔒 <span>${privateText}</span>${timestamp}</div>`;
-        }
-
-        // 부분 마스킹 배열(pieces) 처리
-        if (s.content?.pieces && Array.isArray(s.content.pieces)) {
-          textHTML = s.content.pieces.map((piece: any) => {
+        if (parsedContent?.pieces && Array.isArray(parsedContent.pieces)) {
+          textHTML = parsedContent.pieces.map((piece: any) => {
             if (piece.isMasked) {
               return `<span style="background-color: #FFCC00">${piece.text || "마스킹된 부분입니다."}</span>`;
             }
             return piece.text || "";
           }).join('');
-        } 
-        // 통문장 마스킹 처리
-        else {
-          textHTML = s.content?.text || s.content?.message || "";
-          if (s.masked || s.isMasked || s.content?.isMasked) {
+        } else {
+          textHTML = parsedContent?.text || parsedContent?.message || "";
+          if (s.masked || s.isMasked || parsedContent?.isMasked) {
             textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
           }
         }
 
-        return `<div><span>${textHTML}</span>${timestamp}</div>`;
+        textHTML = textHTML.replace(/\n/g, "<br>");
+
+        return `<div class="mb-1.5 leading-relaxed"><span>${textHTML}</span>${speakerBadge}${timestampBadge}</div>`;
       }).join('');
 
       contentRef.current.innerHTML = htmlContent;
     }
-  }, [isLoading, scriptList]);
+  }, [isLoading, scriptList, mentoringInfo]);
 
   return (
     <main className="flex flex-col w-full h-[100dvh] bg-white text-[#1A1A1A] font-sans overflow-hidden relative">

@@ -17,7 +17,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
   const [canUndo, setCanUndo] = useState(false);
   const [clickRangeStart, setClickRangeStart] = useState<Range | null>(null);
   
-  const [mentoringInfo, setMentoringInfo] = useState<{ title: string; date: string } | null>(null);
+  const [mentoringInfo, setMentoringInfo] = useState<{ title: string; date: string, isGroup?: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPublishing, setIsPublishing] = useState(false);
 
@@ -59,7 +59,11 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           ? `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
           : "날짜 정보 없음";
 
-        setMentoringInfo({ title: mentoring?.title || "라이브 멘토링 스크립트", date: dateStr });
+        setMentoringInfo({ 
+          title: mentoring?.title || "라이브 멘토링 스크립트", 
+          date: dateStr,
+          isGroup: mentoring.isGroup,
+        });
         
         // DOM에 직접 꽂는 대신 안전하게 React 상태에 담아둡니다.
         setScriptList(scripts);
@@ -77,36 +81,74 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
   // 2. 렌더링 동기화 용 useEffect
   useEffect(() => {
     if (!isLoading && editorRef.current && scriptList.length > 0) {
+      
       const htmlContent = scriptList.map((s: any) => {
         const scriptId = s.scriptId || String(s.id);
         
-        // 타임스탬프 문장 뒤에 붙임.
-        const startTimeVal = s.content?.startTime;
-        const timestamp = startTimeVal !== null && startTimeVal !== undefined
-          ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none" contenteditable="false">${parseFloat(startTimeVal).toFixed(1)}s</span>` 
+        // 1. content 객체 파싱 방어
+        let parsedContent = s.content;
+        if (typeof parsedContent === 'string') {
+          try {
+            parsedContent = JSON.parse(parsedContent);
+          } catch (e) {
+            parsedContent = { text: parsedContent };
+          }
+        }
+
+        const rawText = parsedContent?.text || s.text || String(parsedContent?.text || parsedContent || "");
+        const textContent = rawText.trim();
+
+        // 2. 데이터 구조 정보 추출
+        const speakerName = s.user?.nickname || s.speakerName || parsedContent?.speakerName;
+        const speakerRole = s.user?.role || s.speakerRole || parsedContent?.speakerRole || "MENTEE";
+        const rawTime = parsedContent?.startTime ?? s.startTime ?? parsedContent?.timestamp ?? s.timestamp;
+
+        // 발화자 뱃지 렌더링 (1:1 멘토링일 경우에만)
+        let speakerBadge = "";
+        if (mentoringInfo?.isGroup === false && speakerName) {
+          const isMentor = speakerRole === "MENTOR";
+          const roleColor = isMentor ? "text-[#FFCC00] bg-[#FFCC00]/10" : "text-blue-500 bg-blue-50";
+          const roleText = isMentor ? "멘토" : "멘티";
+          
+          speakerBadge = `<span class="text-[11px] font-bold ${roleColor} px-1.5 py-0.5 rounded ml-2 select-none inline-block align-middle" contenteditable="false">[${roleText}] ${speakerName}</span>`;
+        }
+
+        // 타임스탬프 렌더링
+        let timeString = "";
+        if (rawTime !== undefined && rawTime !== null) {
+          if (Number(rawTime) > 1000000000000) {
+            // 절대시간(Date.now) 형태인 경우 HH:MM:SS 로 변환
+            const date = new Date(Number(rawTime));
+            timeString = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+          } else {
+            // 초(Seconds) 형태인 경우 소수점 1자리로 표현
+            timeString = `${parseFloat(rawTime).toFixed(1)}s`;
+          }
+        }
+
+        const timestampBadge = timeString 
+          ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none inline-block align-middle" contenteditable="false">${timeString}</span>` 
           : "";
 
-        const rawText = s.content?.text || s.text || String(s.content || "");
-        const textContent = rawText.trim(); 
-
-        // 비공개 라벨 처리 분기 (문장 끝에 타임스탬프 배치)
+        // 비공개 및 형광펜 처리 후 최종 병합
         if (s.isPrivate === true || String(s.isPrivate) === "true") {
-          return `<div class="text-gray-400 italic script-block" data-script-id="${scriptId}" contenteditable="false"><span class="script-content">비공개 구간 질문 및 답변입니다.</span>${timestamp}</div>`;
+          return `<div class="script-block leading-relaxed mb-1.5" data-script-id="${scriptId}" contenteditable="false"><span class="script-content text-gray-400 italic">비공개 구간 질문 및 답변입니다.</span>${speakerBadge}${timestampBadge}</div>`;
         }
 
         let textHTML = textContent.replace(/\n/g, "<br>");
         
-        if (s.isMasked === true || s.content?.isMasked === true) {
+        if (s.isMasked === true || s.isMasked === "true" || parsedContent?.isMasked === true) {
           textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
         }
 
-        return `<div class="script-block" data-script-id="${scriptId}"><span class="script-content">${textHTML}</span>${timestamp}</div>`;
+        // 문장 텍스트 + 발화자 뱃지 + 타임스탬프를 일렬로 렌더링
+        return `<div class="script-block leading-relaxed mb-1.5" data-script-id="${scriptId}"><span class="script-content">${textHTML}</span>${speakerBadge}${timestampBadge}</div>`;
       }).join('');
 
       editorRef.current.innerHTML = htmlContent;
       updateUndoState();
     }
-  }, [isLoading, scriptList]);
+  }, [isLoading, scriptList, mentoringInfo]);
 
   // 2. 스크립트 발행 (데이터 수집)
   const handlePublish = async () => {
