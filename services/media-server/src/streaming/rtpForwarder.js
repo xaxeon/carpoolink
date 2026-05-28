@@ -77,10 +77,11 @@ export class RtpForwarder {
         const sdpPath = join(tmpdir(), `stt-${producer.id}.sdp`);
         writeFileSync(sdpPath, buildSdp(port, consumer.rtpParameters));
 
+        // FFmpeg 전처리
         const ffmpeg = spawn('ffmpeg', [
             '-protocol_whitelist', 'file,udp,rtp',
             '-i', sdpPath,
-            '-af', 'silencedetect=noise=-45dB:d=1.0',
+            '-af', 'highpass=f=80,lowpass=f=7000,silencedetect=noise=-35dB:d=1.0',
             '-f', 's16le', '-ar', '16000', '-ac', '1',
             'pipe:1',
         ]);
