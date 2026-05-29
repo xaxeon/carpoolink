@@ -264,6 +264,48 @@ router.get('/:mentoringId', requireUser, async (req, res, next) => {
     }
 });
 
+// [GET] /scripts/:mentoringId/recent - 진행 중 멘토링 최근 스크립트 조회 (랭킹 맥락용)
+router.get('/:mentoringId/recent', requireUser, async (req, res, next) => {
+    try {
+        let mentoringId;
+        try {
+            mentoringId = BigInt(req.params.mentoringId);
+        } catch {
+            return res.status(400).json({ message: '유효하지 않은 mentoringId입니다.' });
+        }
+
+        const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+
+        const mentoring = await prisma.mentoring.findFirst({
+            where: {
+                mentoringId,
+                status: 'ON_AIR',
+                userId: req.user.userId, // 주관 멘토만 조회 가능
+            },
+        });
+
+        if (!mentoring) {
+            return res.status(404).json({ message: '멘토링을 찾을 수 없거나 접근이 거부되었습니다.' });
+        }
+
+        const scripts = await prisma.script.findMany({
+            where: { mentoringId },
+            orderBy: [{ createdAt: 'desc' }, { scriptId: 'desc' }],
+            take: limit,
+        });
+
+        res.json(serialize({
+            scripts: scripts.reverse().map(s => ({
+                scriptId: s.scriptId,
+                text: s.content?.text ?? '',
+                createdAt: s.createdAt,
+            })),
+        }));
+    } catch (error) {
+        next(error);
+    }
+});
+
 // [PATCH] /scripts/:mentoringId/publish - 스크립트 단락 수정 및 멘토링 스크립트 발행
 router.patch('/:mentoringId/publish', requireUser, async (req, res, next) => {
     try {
