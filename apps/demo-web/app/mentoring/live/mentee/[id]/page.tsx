@@ -570,7 +570,8 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
 
                 <div className="relative z-10 flex flex-col items-end">
                     {!isChatClosed && (
-                        <>
+                        // 팝업을 채팅창 위로 띄움
+                        <div className="absolute bottom-full right-0 w-full flex flex-col items-end pb-3 z-50">
                             {/* AI 추천 토글 버튼 */}
                             <button onClick={() => setIsAiOpen(!isAiOpen)} className="flex items-center gap-1.5 px-3 py-1.5 mb-2 bg-[#222222] border border-gray-700/50 rounded-full shadow-md hover:bg-gray-800 transition-colors active:scale-95">
                                 <Sparkles className="w-3.5 h-3.5 text-[#FFCC00]" />
@@ -648,7 +649,7 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                                     )}
                                 </div>
                             </div>
-                        </>
+                        </div>
                     )}
 
                     {/* 채팅 입력 영역 */}
