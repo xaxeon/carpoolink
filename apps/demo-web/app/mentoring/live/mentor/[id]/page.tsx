@@ -525,6 +525,8 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             return;
         }
 
+        const shouldControlMenteeConsumers = Boolean(question.isPrivate);
+
         if (!question?.userId) {
             console.error("🚨 [프론트 에러] 질문 작성자의 userId를 찾을 수 없습니다.", { questionId: question.id, question });
             alert("질문 작성자 정보를 찾을 수 없어 음성 제어를 시작하지 못했습니다.");
@@ -537,6 +539,11 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             await new Promise<void>((resolve, reject) => {
                 if (!socket?.connected || !sendSignal) {
                     reject(new Error("미디어 소켓이 연결되지 않았습니다."));
+                    return;
+                }
+
+                if (!shouldControlMenteeConsumers) {
+                    resolve();
                     return;
                 }
 
@@ -558,7 +565,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 );
             });
 
-            pausedQuestionUserIdRef.current = question.userId;
+            if (shouldControlMenteeConsumers) {
+                pausedQuestionUserIdRef.current = question.userId;
+            }
 
             // API가 방금 응답해준 확실한 데이터를 바로 꺼내서 읽음
             const questionText = question.content;
@@ -647,13 +656,21 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             return;
         }
 
-        const shouldResumeAudio = pausedQuestionUserIdRef.current !== null;
+        const currentQuestion = currentQuestionRef.current;
+        const shouldControlMenteeConsumers = Boolean(currentQuestion?.id === questionId && currentQuestion.isPrivate);
+
+        const shouldResumeAudio = shouldControlMenteeConsumers && pausedQuestionUserIdRef.current !== null;
 
         if (shouldResumeAudio) {
             try {
                 await new Promise<void>((resolve, reject) => {
                     if (!socket?.connected || !sendSignal) {
                         reject(new Error("미디어 소켓이 연결되지 않았습니다."));
+                        return;
+                    }
+
+                    if (!shouldControlMenteeConsumers) {
+                        resolve();
                         return;
                     }
 
