@@ -560,23 +560,23 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
             pausedQuestionUserIdRef.current = question.userId;
 
+            // API가 방금 응답해준 확실한 데이터를 바로 꺼내서 읽음
+            const questionText = question.content;
+
+            // 비공개 질문 여부(question.isPrivate)를 확인하여 TTS 안내 멘트를 조립.
+            const ttsText = question.isPrivate
+                ? `비공개 질문입니다. ${questionText}`
+                : questionText;
+
+            // 백그라운드에서 오디오 재생 함수 실행
+            playQuestionAudio(ttsText);
+
             const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${question.id}/acknowledge`);
 
             setIsReading(true);
             console.log(`✅ [API 성공] 질문 상태가 ANSWERING으로 변경됨:`, res.data);
 
-            // API가 방금 응답해준 확실한 데이터를 바로 꺼내서 읽음
-            const questionText = res.data?.question?.content;
-
             if (questionText) {
-                // 비공개 질문 여부(question.isPrivate)를 확인하여 TTS 안내 멘트를 조립.
-                const ttsText = question.isPrivate
-                    ? `비공개 질문입니다. ${questionText}`
-                    : questionText;
-
-                // 백그라운드에서 오디오 재생 함수 실행
-                playQuestionAudio(ttsText);
-
                 // 읽은 질문 내용을 STT 스크립트 DB에 직접 기록
                 try {
                     const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
