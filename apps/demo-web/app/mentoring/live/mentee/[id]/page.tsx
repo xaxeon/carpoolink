@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import apiClient from "@/lib/apiClient";
 
 import { io, Socket } from "socket.io-client";
-import { Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown, AlertCircle, Play, Lock, Loader2, HelpCircle } from "lucide-react";
+import { Users, Send, Sparkles, Star, X, ChevronUp, ChevronDown, AlertCircle, Play, Loader2, HelpCircle, RefreshCw } from "lucide-react";
 
 import { useMentoringSession } from "@/hooks/useMentoringSession";
 import { useWebRtcSession } from "@/hooks/useWebRtcSession";
@@ -213,7 +213,9 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
     };
 
     useEffect(() => {
-        if (isAiOpen) {
+        // 팝업이 열렸을 때, 기존에 생성된 질문이 없을 경우에만 최초 1회 호출.
+        // 이미 질문이 존재한다면 팝업을 닫았다 열어도 기존 질문을 유지.
+        if (isAiOpen && aiQuestions.length === 0) {
             fetchAiRecommendations();
         }
     }, [isAiOpen]);
@@ -578,6 +580,20 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
 
                             {/* AI 추천 팝업 컨테이너 */}
                             <div className={`w-full bg-[#222222] border border-gray-700/50 rounded-2xl shadow-lg transition-all duration-300 ease-in-out overflow-hidden flex flex-col ${isAiOpen ? "max-h-80 opacity-100 p-4 mb-3" : "max-h-0 opacity-0 p-0 m-0 border-transparent"}`}>
+                                {/* 팝업 내부 상단 새로고침 컨트롤러 */}
+                                <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-700/50 shrink-0">
+                                    <span className="text-xs text-gray-400 font-medium">AI 실시간 맞춤 질문</span>
+                                    <button 
+                                        onClick={fetchAiRecommendations} 
+                                        disabled={isAiLoading}
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-gray-400 hover:text-[#FFCC00] transition-colors disabled:opacity-50"
+                                    >
+                                        <RefreshCw className={`w-3.5 h-3.5 ${isAiLoading ? 'animate-spin text-[#FFCC00]' : ''}`} />
+                                        {isAiLoading ? '생성 중...' : '새로고침'}
+                                    </button>
+                                </div>
+
+                                {/* 팝업 내부 하단 추천 질문 렌더 영역 */}
                                 <div className="flex flex-col gap-2 overflow-y-auto custom-scrollbar">
                                     {isAiLoading ? (
                                         // 1. 로딩 상태 UI
