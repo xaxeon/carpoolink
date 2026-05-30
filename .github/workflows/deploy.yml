@@ -224,6 +224,8 @@ jobs:
                   docker run --restart always \
                     -d --name carpoolink-media-server \
                     --network host \
+                    --add-host=${{ secrets.SERVER_URL }}:127.0.0.1 \
+                    --add-host=www.${{ secrets.SERVER_URL }}:127.0.0.1 \
                     --env-file /app/.env \
                     ghcr.io/${{ env.REPO_OWNER }}/media-server:${{ github.sha }}
                   ;;
