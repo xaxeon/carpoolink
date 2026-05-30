@@ -238,7 +238,7 @@ router.get('/:mentoringId', requireUser, async (req, res, next) => {
         const scripts = mentoring.scripts
             .map((script) => mapScriptParagraph({ ...script, mentoring }, req.user.userId))
             .filter(Boolean)
-            .sort((left, right) => new Date(left.createdAt) - new Date(right.createdAt));
+            .sort((left, right) => new Number(left.scriptId) - new Number(right.scriptId));
 
         res.json(
             serialize({

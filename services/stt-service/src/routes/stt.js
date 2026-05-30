@@ -206,7 +206,7 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
   }
 });
 
-// stt-service/routes/stt.js 내부의 GET 엔드포인트 수정
+// 전체 스크립트 조회 api
 router.get("/mentoring/:mentoringId", async (req, res) => {
   try {
     const { mentoringId } = req.params;
@@ -232,22 +232,33 @@ router.get("/mentoring/:mentoringId", async (req, res) => {
     const serializedScripts = scripts.map(s => {
       let textVal = "";
       let startTimeVal = null;
+      let piecesVal = null;
 
       // content 내장 JSON 오브젝트 안전 파싱
+      let contentObj = null;
       if (s.content && typeof s.content === 'object') {
-        textVal = s.content.text || "";
-        startTimeVal = s.content.startTime ?? s.content.timestamp ?? null;
+        contentObj = s.content;
       } else if (typeof s.content === 'string') {
         try {
-          const parsed = JSON.parse(s.content);
-          textVal = parsed.text || "";
-          startTimeVal = parsed.startTime ?? null;
+          contentObj = JSON.parse(s.content);
         } catch (e) {
           textVal = s.content;
         }
       }
 
-      // DB에 실존하는 유저의 실제 nickname과 role을 추출하고, 없을 경우에만 예외 기본값을 부여합니다.
+      if (contentObj) {
+        // 1. 이미 발행되어 pieces 배열이 존재하는 경우
+        if (Array.isArray(contentObj.pieces)) {
+          piecesVal = contentObj.pieces;
+          // 프론트 초기 렌더링 호환을 위해 textVal도 병합 추출
+          textVal = contentObj.pieces.map(p => p.text).join("");
+        } else {
+          // 2. 발행 전 최초 STT raw 데이터 규격인 경우
+          textVal = contentObj.text || "";
+        }
+        startTimeVal = contentObj.startTime ?? contentObj.timestamp ?? null;
+      }
+
       const realNickname = s.user?.nickname || "알 수 없음";
       const realRole = s.user?.role || "MENTEE";
 
@@ -256,16 +267,17 @@ router.get("/mentoring/:mentoringId", async (req, res) => {
         userId: s.userId.toString(),
         mentoringId: s.mentoringId.toString(),
         isPrivate: s.isPrivate || false,
-        isMasked: s.isMasked || false,
+        // 단락 단위 마스킹 플래그 혹은 pieces 내부 마스킹 포함 여부 검사
+        isMasked: s.isMasked || (piecesVal ? piecesVal.some(p => p.isMasked) : false),
         content: {
           text: textVal,
           startTime: startTimeVal,
-          chunkIndex: s.content?.chunkIndex || 0
+          chunkIndex: contentObj?.chunkIndex || 0,
+          pieces: piecesVal // 프론트엔드로 pieces 배열 전달 보장
         },
-        // core-api 규격과 100% 일치하도록 user 객체 포맷 매핑
         user: {
           nickname: realNickname,
-          role: realRole // 이제 "MENTOR"가 정상적으로 전달됩니다.
+          role: realRole
         }
       };
     });
@@ -298,6 +310,7 @@ function detectCommand(text) {
   return null;
 }
 
+// 멘토링 종료 시 stt 세션 상태를 정리하는 api
 router.post('/session/:mentoringId/end', (req, res) => {
   privateState.delete(String(req.params.mentoringId));
   console.log('[STT] 세션 정리됨:', req.params.mentoringId, '| 남은 세션:', privateState.size);
