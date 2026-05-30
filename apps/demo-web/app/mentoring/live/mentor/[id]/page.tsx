@@ -130,6 +130,12 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             acknowledgeQuestion(currentQuestionRef.current);
                         }
                         break;
+                    case 'READ_QUESTION_AGAIN':
+                        if (currentQuestionRef.current && !isReading) {
+                            console.log("🤖 음성 명령으로 질문 다시 읽기를 시작합니다.");
+                            acknowledgeQuestion(currentQuestionRef.current);
+                        }
+                        break;
                     case 'START_PRIVATE':
                         console.log("🔒 음성 명령으로 비공개 송출 모드를 시작합니다.");
                         setIsPrivateMode(true);
@@ -144,6 +150,16 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         // resumeMenteeConsumers 시그널 전송
                         if (sendSignal) {
                             sendSignal("resumeMenteeConsumers", { mentoringId: Number(mentoringId) });
+                        }
+                        break;
+                    case 'NEXT_QUESTION':
+                        console.log("🤖 음성 명령으로 다음 질문 읽기를 시작합니다.");
+                        handleNextQuestion();
+                        break;
+                    case 'COMPLETE_ANSWER':
+                        if (currentQuestionRef.current) {
+                            console.log("🤖 답변을 종료합니다.");
+                            completeQuestion(currentQuestionRef.current.id);
                         }
                         break;
                 }
