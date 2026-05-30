@@ -239,6 +239,21 @@ app.post('/commands/execute', async (req, res) => {
                 mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
                 break;
             }
+            case 'READ_QUESTION_AGAIN': {
+                const mentor = [...room.peers.values()].find(p => p.role === 'MENTOR');
+                mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
+                break;
+            }
+            case 'NEXT_QUESTION': {
+                const mentor = [...room.peers.value()].find(p => p.role === 'MENTOR');
+                mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
+                break;
+            }
+            case 'COMPLETE_ANSWER': {
+                const mentor = [...room.peers.value()].find(p => p.role === 'MENTOR');
+                mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
+                break;
+            }
             case 'START_PRIVATE': {
                 const privateQuestion = await prisma.question.findFirst({
                     where: { mentoringId: BigInt(mentoringId), isPrivate: true, status: 'ANSWERING' },
