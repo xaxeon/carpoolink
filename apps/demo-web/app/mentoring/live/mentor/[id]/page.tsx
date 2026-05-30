@@ -214,7 +214,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 let currentSTTSection = "";
                 try {
                     const scriptRes = await apiClient.get(
-                        `/api/mentorings/${mentoringId}/scripts/recent?limit=5`
+                        `/api/scripts/${mentoringId}/recent?limit=5`
                     );
                     currentSTTSection = (scriptRes.data?.scripts || [])
                         .map((s: any) => s.text)
