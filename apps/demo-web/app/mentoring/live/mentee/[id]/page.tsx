@@ -13,6 +13,7 @@ import { useWebRtcSession } from "@/hooks/useWebRtcSession";
 
 interface Question {
     id: number;
+    userId?: number;
     isPaid: boolean;
     isPrivate: boolean;
     author: string;
@@ -262,6 +263,7 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
             if (q) {
                 setCurrentAnsweringQuestion({
                     id: Number(q.questionId),
+                    userId: q.user?.userId ? Number(q.user.userId) : undefined,
                     isPaid: q.isPaid || false,
                     isPrivate: q.isPrivate || false,
                     author: q.user?.nickname || '익명멘티',
@@ -448,8 +450,8 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
             </header>
 
             <div className="px-4 shrink-0 z-10 flex flex-col gap-3">
-                {/* 현재 답변 중인 질문이 있고, '공개(isPrivate: false)'일 때만 질문 카드를 렌더링합니다. */}
-                {currentAnsweringQuestion && !currentAnsweringQuestion.isPrivate && (
+                {/* 공개 질문이거나(!isPrivate) || 내가 작성한 질문일 때(userId === userId)만 렌더링 */}
+                {currentAnsweringQuestion && (!currentAnsweringQuestion.isPrivate || currentAnsweringQuestion.userId === userId) && (
                     <div className={`w-full rounded-[20px] p-4 shrink-0 shadow-lg flex justify-between gap-3 animate-in slide-in-from-top-4 fade-in duration-300 ${currentAnsweringQuestion.isPaid ? 'bg-[#FFCC00] text-[#1A1A1A]' : 'bg-[#F0F0F0] text-[#1A1A1A]'}`}>
                         <div className="flex flex-col gap-2 flex-1">
                             <div className="flex items-center gap-2">
