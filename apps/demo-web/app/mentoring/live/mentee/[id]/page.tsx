@@ -590,7 +590,7 @@ function LiveMentoringContent({ mentoringId, role, userId, userName }: { mentori
                                         className="flex items-center gap-1.5 text-[11px] font-bold text-gray-400 hover:text-[#FFCC00] transition-colors disabled:opacity-50"
                                     >
                                         <RefreshCw className={`w-3.5 h-3.5 ${isAiLoading ? 'animate-spin text-[#FFCC00]' : ''}`} />
-                                        {isAiLoading ? '생성 중...' : '새로고침'}
+                                        {isAiLoading ? '생성 중...' : '새 질문 생성'}
                                     </button>
                                 </div>
 
