@@ -73,6 +73,7 @@ export default function MentorLivePage() {
 function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringId: string, role: string, userId: number, userName: string }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const currentQuestionRef = useRef<Question | null>(null);
 
     const [chats, setChats] = useState<any[]>([]);
     const [onlineUserCount, setOnlineUserCount] = useState(0);
@@ -395,8 +396,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
     const currentQuestion = questionQueue[currentIdx];
 
-    // 소켓 리스너 안에서 최신 currentQuestion을 참조하기 위한 Ref
-    const currentQuestionRef = useRef<Question | null>(null);
+    // 소켓 리스너 안에서 최신 currentQuestion을 참조하기 위한 Effect
     useEffect(() => {
         currentQuestionRef.current = currentQuestion || null;
     }, [currentQuestion]);
