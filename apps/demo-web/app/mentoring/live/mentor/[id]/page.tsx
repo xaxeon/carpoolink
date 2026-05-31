@@ -133,28 +133,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     case 'READ_QUESTION_AGAIN':
                         if (currentQuestionRef.current && !isReading) {
                             console.log("🤖 음성 명령으로 질문 다시 읽기를 시작합니다.");
-                            acknowledgeQuestion(currentQuestionRef.current);
+                            // 비공개 질문 여부를 확인하여 TTS 안내 멘트를 조립.
+                            const ttsText = currentQuestionRef.current.isPrivate
+                                ? `비공개 질문입니다. ${currentQuestionRef.current.content}`
+                                : currentQuestionRef.current.content;
+                            // 백그라운드에서 오디오 재생 함수 실행
+                            playQuestionAudio(ttsText);
                         }
-                        break;
-                    case 'START_PRIVATE':
-                        console.log("🔒 음성 명령으로 비공개 송출 모드를 시작합니다.");
-                        setIsPrivateMode(true);
-                        break;
-                    case 'END_PRIVATE':
-                        console.log("🔓 음성 명령으로 비공개 송출 모드를 종료합니다.");
-                        setIsPrivateMode(false);
-                        if (currentQuestionRef.current) {
-                            // 답변 완료 함수를 호출
-                            completeQuestion(currentQuestionRef.current.id);
-                        }
-                        // resumeMenteeConsumers 시그널 전송
-                        if (sendSignal) {
-                            sendSignal("resumeMenteeConsumers", { mentoringId: Number(mentoringId) });
-                        }
-                        break;
-                    case 'NEXT_QUESTION':
-                        console.log("🤖 음성 명령으로 다음 질문 읽기를 시작합니다.");
-                        handleNextQuestion();
                         break;
                     case 'COMPLETE_ANSWER':
                         if (currentQuestionRef.current) {
@@ -583,6 +568,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
             if (shouldControlMenteeConsumers) {
                 pausedQuestionUserIdRef.current = question.userId;
+                setIsPrivateMode(true);
+                const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
+                fetch(`${STT_SERVER_URL}/audio/stt/session/${mentoringId}/private`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isPrivate: true })
+                }).catch(e => console.error('[STT] 비공개 상태 설정 실패', e));
             }
 
             // API가 방금 응답해준 확실한 데이터를 바로 꺼내서 읽음
@@ -723,6 +715,14 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             setCurrentIdx(0);
             setCompletedIds((prev) => [...prev, questionId]);
             setQuestions((prev) => prev.filter(q => q.id !== questionId));
+
+            setIsPrivateMode(false);
+            const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
+            fetch(`${STT_SERVER_URL}/audio/stt/session/${mentoringId}/private`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isPrivate: false })
+            }).catch(e => console.error('[STT] 비공개 상태 초기화 실패', e));
 
             console.log(`✅ [API 성공] 질문 상태가 COMPLETED로 변경됨:`, res.data);
         } catch (err: any) {
