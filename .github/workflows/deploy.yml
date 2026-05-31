@@ -249,8 +249,8 @@ jobs:
                     --network carpoolink-network \
                     --env-file /app/.env \
                     -e QUESTION_PRELOAD_KC_ELECTRA=true \
-                    -e QUESTION_TFIDF_ARTIFACT_DIR=/app/services/model/question_detection/tfidf_lr_rule_filter_off \
-                    -e QUESTION_KC_ELECTRA_DIR=/app/services/model/question_detection/kc_electra_question_detector \
+                    -e QUESTION_TFIDF_ARTIFACT_DIR=/app/services/model/question_detection/tfidf_lr_v2 \
+                    -e QUESTION_KC_ELECTRA_DIR=/app/services/model/question_detection/kc_electra_v2 \
                     -v /app/services/model/question_detection:/app/services/model/question_detection:ro \
                     ghcr.io/${{ env.REPO_OWNER }}/question-model-api:${{ github.sha }}
                   ;;

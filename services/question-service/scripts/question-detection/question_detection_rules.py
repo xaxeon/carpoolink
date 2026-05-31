@@ -159,6 +159,8 @@ NON_QUESTION_END_PATTERNS = [
     r"웃기네[.!]?$",
     r"처음\s*들어봐[.!]?$",
     r"처음\s*봤어[.!]?$",
+    r"듯[이]?[.!]?$",
+    r"네요[.!]?$",
 ]
 
 SPECIAL_ONLY_PATTERN = r"^[\W_]+$"
@@ -253,7 +255,7 @@ def classify_question_by_rules(text: str) -> tuple[int | None, str]:
         return 0, "rule_statement_ending"
 
     if (
-        features["is_very_short_text"]
+        features["is_short_text"]
         and features["has_reaction_like"]
         and not features["has_question_mark"]
     ):
