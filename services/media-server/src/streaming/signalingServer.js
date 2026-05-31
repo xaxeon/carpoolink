@@ -221,7 +221,8 @@ export function createSignalingServer({ httpServer, mediaOrchestrator, mentoring
                             transportId: data.transportId,
                             kind: data.kind,
                             rtpParameters: data.rtpParameters,
-                            appData: data.appData
+                            appData: data.appData,
+                            userId: context.userId
                         });
 
                         notifyPeers(
