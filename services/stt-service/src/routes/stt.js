@@ -298,7 +298,7 @@ router.post('/session/:mentoringId/private', (req, res) => {
   res.json({ ok: true });
 })
 
-// 세션 정리 엔드포인트
+// 멘토링 종료 시 stt 세션 상태를 정리하는 api
 router.post('/session/:mentoringId/end', (req, res) => {
   privateState.delete(String(req.params.mentoringId));
   console.log('[STT] 세션 정리됨:', req.params.mentoringId, '| 남은 세션:', privateState.size);
