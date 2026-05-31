@@ -280,6 +280,7 @@ export class MediaSoupOrchestrator {
             }
 
             const shouldForward = peer.role === 'MENTOR' || (!room.isGroup && peer.role === 'MENTEE');
+            console.log('[produce] role:', peer.role, 'userId:', peer.userId, 'isGroup:', room.isGroup, 'shouldForward:', shouldForward);
             if (shouldForward && peer.userId != null) {
                 this.rtpForwarder.start({
                     router: room.router,
