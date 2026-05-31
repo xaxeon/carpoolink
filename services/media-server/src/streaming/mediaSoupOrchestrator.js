@@ -241,7 +241,7 @@ export class MediaSoupOrchestrator {
     }
 
     // 클라이언트가 미디어를 송출할 때 호출되는 메서드, 새로운 프로듀서를 생성하여 방에 연결함
-    async produce({ mentoringId, peerId, transportId, kind, rtpParameters, appData }) {
+    async produce({ mentoringId, peerId, transportId, kind, rtpParameters, appData, userId }) {
         const room = this.rooms.get(Number(mentoringId));
         const peer = room?.peers.get(peerId);
 
@@ -280,6 +280,9 @@ export class MediaSoupOrchestrator {
             }
 
             const shouldForward = peer.role === 'MENTOR' || (!room.isGroup && peer.role === 'MENTEE');
+            if (userId != null && peer.userId == null) {
+                peer.userId = userId;   // joinMentoring에서 못 받았을 경우 보완
+            }
             console.log('[produce] role:', peer.role, 'userId:', peer.userId, 'isGroup:', room.isGroup, 'shouldForward:', shouldForward);
             if (shouldForward && peer.userId != null) {
                 this.rtpForwarder.start({
