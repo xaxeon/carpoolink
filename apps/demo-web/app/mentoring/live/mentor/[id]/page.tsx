@@ -73,6 +73,7 @@ export default function MentorLivePage() {
 function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringId: string, role: string, userId: number, userName: string }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const currentQuestionRef = useRef<Question | null>(null);
 
     const [chats, setChats] = useState<any[]>([]);
     const [onlineUserCount, setOnlineUserCount] = useState(0);
@@ -328,6 +329,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         // 클러스터링 결과가 아직 없거나 대기 중일 때의 예외 방어 정렬
         if (clusters.length === 0 && activeQuestions.length > 0) {
             return [...activeQuestions].sort((a, b) => {
+                // 답변 중인 질문은 최상단 고정
+                const readingId = currentQuestionRef.current?.id;
+                if (isReading && readingId) {
+                    if (a.id === readingId) return -1;
+                    if (b.id === readingId) return 1;
+                }
+
                 if (a.isPaid && !b.isPaid) return -1;
                 if (!a.isPaid && b.isPaid) return 1;
 
@@ -352,6 +360,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
         // 최종 하이브리드 정렬 실행
         return mappedQueue.sort((a, b) => {
+            // 규칙 0: 답변 중인 질문은 최상단 고정
+            const readingId = currentQuestionRef.current?.id;
+            if (isReading && readingId) {
+                if (a.id === readingId) return -1;
+                if (b.id === readingId) return 1;
+            }
+
             // 규칙 1: 유료 질문이 무조건 최상단 노출
             if (a.isPaid && !b.isPaid) return -1;
             if (!a.isPaid && b.isPaid) return 1;
@@ -361,13 +376,12 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             const scoreB = questionRankings[String(b.id)] || 0;
             return scoreB - scoreA;
         });
-    }, [clusters, activeQuestions, questionRankings]);
+    }, [clusters, activeQuestions, questionRankings, isReading]);
 
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
     const currentQuestion = questionQueue[currentIdx];
 
-    // 소켓 리스너 안에서 최신 currentQuestion을 참조하기 위한 Ref
-    const currentQuestionRef = useRef<Question | null>(null);
+    // 소켓 리스너 안에서 최신 currentQuestion을 참조하기 위한 Effect
     useEffect(() => {
         currentQuestionRef.current = currentQuestion || null;
     }, [currentQuestion]);
@@ -386,6 +400,15 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         if (!isReading) {
             setCurrentIdx(0);
             return;
+        }
+
+        // 답변 중(isReading === true)일 때, 현재 질문의 id가 큐 내에서 몇 번째인지 추적
+        if (currentQuestionRef.current) {
+            const trackedIdx = questionQueue.findIndex(q => q.id === currentQuestionRef.current!.id);
+            if (trackedIdx !== -1 && trackedIdx !== currentIdx) {
+                setCurrentIdx(trackedIdx);
+                return;
+            }
         }
 
         // 3. 만약 질문을 읽으며 답변 중인데 큐가 변해서 인덱스가 범위를 초과했다면 안전하게 마지막 카드로 보정

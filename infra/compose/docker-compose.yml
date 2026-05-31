@@ -73,6 +73,8 @@ services:
       context: ../..
       dockerfile: services/media-server/Dockerfile
     container_name: carpoolink-media-server
+    env_file:
+      - ../../.env
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       MEDIA_SERVER_PORT: 4002
@@ -86,6 +88,7 @@ services:
         condition: service_healthy
     volumes:
       - ../../services/media-server:/app/services/media-server
+      - ../../.env:/app/.env
       - /app/services/media-server/node_modules
     networks:
       - carpoolink-network

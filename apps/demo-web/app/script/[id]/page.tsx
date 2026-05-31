@@ -12,11 +12,11 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
   const [isMenteeView, setIsMenteeView] = useState(false);
   const [isPublishPopupOpen, setIsPublishPopupOpen] = useState(false);
-  
+
   const [editMode, setEditMode] = useState<"drag" | "click">("drag");
   const [canUndo, setCanUndo] = useState(false);
   const [clickRangeStart, setClickRangeStart] = useState<Range | null>(null);
-  
+
   const [mentoringInfo, setMentoringInfo] = useState<{ title: string; date: string, isGroup?: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -47,24 +47,24 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       try {
         const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
         const res = await fetch(`${STT_SERVER_URL}/audio/stt/mentoring/${id}`);
-        
+
         if (!res.ok) throw new Error(`STT 서비스 응답 실패: ${res.status}`);
         const resultData = await res.json();
-        
+
         const mentoring = resultData?.mentoring;
         const scripts = resultData?.scripts || [];
 
         const d = mentoring?.startedAt ? new Date(mentoring.startedAt) : null;
-        const dateStr = d 
+        const dateStr = d
           ? `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
           : "날짜 정보 없음";
 
-        setMentoringInfo({ 
-          title: mentoring?.title || "라이브 멘토링 스크립트", 
+        setMentoringInfo({
+          title: mentoring?.title || "라이브 멘토링 스크립트",
           date: dateStr,
           isGroup: mentoring.isGroup,
         });
-        
+
         // DOM에 직접 꽂는 대신 안전하게 React 상태에 담아둡니다.
         setScriptList(scripts);
 
@@ -79,69 +79,69 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
   }, [id]);
 
   // 2. 렌더링 동기화 용 useEffect
+
   useEffect(() => {
     if (!isLoading && editorRef.current && scriptList.length > 0) {
-      
+
       const htmlContent = scriptList.map((s: any) => {
         const scriptId = s.scriptId || String(s.id);
-        
-        // 1. content 객체 파싱 방어
+
         let parsedContent = s.content;
         if (typeof parsedContent === 'string') {
-          try {
-            parsedContent = JSON.parse(parsedContent);
-          } catch (e) {
-            parsedContent = { text: parsedContent };
-          }
+          try { parsedContent = JSON.parse(parsedContent); } catch (e) { parsedContent = { text: parsedContent }; }
         }
 
-        const rawText = parsedContent?.text || s.text || String(parsedContent?.text || parsedContent || "");
-        const textContent = rawText.trim();
-
-        // 2. 데이터 구조 정보 추출
         const speakerName = s.user?.nickname || s.speakerName || parsedContent?.speakerName;
         const speakerRole = s.user?.role || s.speakerRole || parsedContent?.speakerRole || "MENTEE";
         const rawTime = parsedContent?.startTime ?? s.startTime ?? parsedContent?.timestamp ?? s.timestamp;
 
-        // 발화자 뱃지 렌더링 (1:1 멘토링일 경우에만)
+        // 발화자 뱃지 및 타임스탬프 렌더링 로직 (기존 코드 유지)
         let speakerBadge = "";
         if (mentoringInfo?.isGroup === false && speakerName) {
           const isMentor = speakerRole === "MENTOR";
           const roleColor = isMentor ? "text-[#FFCC00] bg-[#FFCC00]/10" : "text-blue-500 bg-blue-50";
           const roleText = isMentor ? "멘토" : "멘티";
-          
           speakerBadge = `<span class="text-[11px] font-bold ${roleColor} px-1.5 py-0.5 rounded ml-2 select-none inline-block align-middle" contenteditable="false">[${roleText}] ${speakerName}</span>`;
         }
 
-        // 타임스탬프 렌더링
         let timeString = "";
         if (rawTime !== undefined && rawTime !== null) {
           if (Number(rawTime) > 1000000000000) {
-            // 절대시간(Date.now) 형태인 경우 HH:MM:SS 로 변환
             const date = new Date(Number(rawTime));
             timeString = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
           } else {
-            // 초(Seconds) 형태인 경우 소수점 1자리로 표현
             timeString = `${parseFloat(rawTime).toFixed(1)}s`;
           }
         }
+        const timestampBadge = timeString ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none inline-block align-middle" contenteditable="false">${timeString}</span>` : "";
 
-        const timestampBadge = timeString 
-          ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none inline-block align-middle" contenteditable="false">${timeString}</span>` 
-          : "";
-
-        // 비공개 및 형광펜 처리 후 최종 병합
+        // 비공개 처리 (기존 코드 유지)
         if (s.isPrivate === true || String(s.isPrivate) === "true") {
           return `<div class="script-block leading-relaxed mb-1.5" data-script-id="${scriptId}" contenteditable="false"><span class="script-content text-gray-400 italic">비공개 구간 질문 및 답변입니다.</span>${speakerBadge}${timestampBadge}</div>`;
         }
 
-        let textHTML = textContent.replace(/\n/g, "<br>");
-        
-        if (s.isMasked === true || s.isMasked === "true" || parsedContent?.isMasked === true) {
-          textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
+        // 핵심 수정: textHTML 조립 분기 처리
+        let textHTML = "";
+
+        if (Array.isArray(parsedContent?.pieces)) {
+          // 1. 이미 발행을 거쳐 pieces 세부 마스킹 데이터 구조를 가진 경우
+          textHTML = parsedContent.pieces.map((p: any) => {
+            const escapedText = p.text.replace(/\n/g, "<br>");
+            if (p.isMasked === true || p.isMasked === "true") {
+              return `<span style="background-color: #FFCC00">${escapedText}</span>`;
+            }
+            return escapedText;
+          }).join("");
+        } else {
+          // 2. 발행 전 단일 문자열 text 구조인 경우
+          const rawText = parsedContent?.text || s.text || String(parsedContent || "");
+          textHTML = rawText.trim().replace(/\n/g, "<br>");
+
+          if (s.isMasked === true || s.isMasked === "true" || parsedContent?.isMasked === true) {
+            textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
+          }
         }
 
-        // 문장 텍스트 + 발화자 뱃지 + 타임스탬프를 일렬로 렌더링
         return `<div class="script-block leading-relaxed mb-1.5" data-script-id="${scriptId}"><span class="script-content">${textHTML}</span>${speakerBadge}${timestampBadge}</div>`;
       }).join('');
 
@@ -157,17 +157,17 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
     try {
       const scriptBlocks = editorRef.current.querySelectorAll('.script-block');
-      
+
       const payloadMap = new Map<string, { text: string; isMasked: boolean }[]>();
 
       scriptBlocks.forEach((block) => {
         const scriptId = block.getAttribute('data-script-id');
         const contentNode = block.querySelector('.script-content');
-        
+
         if (!scriptId || !contentNode) return;
 
         const pieces: { text: string; isMasked: boolean }[] = [];
-        
+
         const parseNode = (node: Node, isCurrentlyMasked: boolean) => {
           if (node.nodeType === Node.TEXT_NODE) {
             if (node.textContent) {
@@ -218,11 +218,11 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       });
 
       await apiClient.patch(`/api/scripts/${id}/publish`, { scripts: payloadScripts });
-      
+
       alert("성공적으로 발행되었습니다!");
       setIsPublishPopupOpen(false);
-      router.push('/mypage/scripts'); 
-      
+      router.push('/mypage/scripts');
+
     } catch (error: any) {
       console.error("스크립트 발행 실패:", error);
       alert(error.response?.data?.message || "발행에 실패했습니다. 다시 시도해주세요.");
@@ -274,7 +274,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
     } else {
       const newRange = document.createRange();
       const cmp = clickRangeStart.compareBoundaryPoints(Range.START_TO_START, currentCaret);
-      
+
       if (cmp <= 0) {
         newRange.setStart(clickRangeStart.startContainer, clickRangeStart.startOffset);
         newRange.setEnd(currentCaret.endContainer, currentCaret.endOffset);
@@ -282,7 +282,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
         newRange.setStart(currentCaret.startContainer, currentCaret.startOffset);
         newRange.setEnd(clickRangeStart.endContainer, clickRangeStart.endOffset);
       }
-      
+
       sel.removeAllRanges();
       sel.addRange(newRange);
       setClickRangeStart(null);
@@ -293,7 +293,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="flex flex-col w-full h-[100dvh] bg-white text-[#1A1A1A] font-sans overflow-hidden relative">
-      
+
       <style>{`
         .editor-container { outline: none; }
         .editor-container ::selection { background-color: rgba(59, 130, 246, 0.4) !important; color: inherit; }
@@ -314,7 +314,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           </button>
           <h1 className="text-[17px] font-extrabold tracking-tight">스크립트 편집 & 리뷰</h1>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-bold text-gray-500">멘티 뷰 보기</span>
           <button onClick={() => setIsMenteeView(!isMenteeView)} className={`w-11 h-6 rounded-full p-1 transition-colors duration-300 ${isMenteeView ? 'bg-[#FFCC00]' : 'bg-gray-200'}`}>
@@ -334,7 +334,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
             <MousePointer2 className="w-3.5 h-3.5" /> 원클릭
           </button>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('mask')} className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹">
             <EyeOff className="w-4 h-4" />
@@ -363,7 +363,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
               <span className="block text-[15px] font-medium text-gray-400 mt-2 tracking-normal">{mentoringInfo?.date}</span>
             </h2>
 
-            <div 
+            <div
               ref={editorRef}
               contentEditable={!isMenteeView}
               suppressContentEditableWarning
@@ -380,8 +380,8 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       </div>
 
       <div className="w-full px-5 py-4 bg-white border-t border-gray-100 flex shrink-0 pb-safe z-20">
-        <button 
-          onClick={() => setIsPublishPopupOpen(true)} 
+        <button
+          onClick={() => setIsPublishPopupOpen(true)}
           disabled={isPublishing}
           className={`flex-1 bg-[#FFCC00] text-[#1A1A1A] font-extrabold text-[16px] py-4 rounded-2xl transition-colors flex items-center justify-center gap-2 shadow-sm
             ${isPublishing ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[#E6B800] active:scale-[0.98]'}
@@ -403,14 +403,14 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
               발행 시 멘티에게 알림이 전송되며<br />더 이상 스크립트를 <b>수정할 수 없습니다.</b>
             </p>
             <div className="flex gap-3 w-full">
-              <button 
+              <button
                 disabled={isPublishing}
-                onClick={() => setIsPublishPopupOpen(false)} 
+                onClick={() => setIsPublishPopupOpen(false)}
                 className="flex-1 bg-[#F2F4F6] text-gray-600 font-bold py-3.5 rounded-xl transition-all hover:bg-gray-200 active:scale-95"
               >
                 취소
               </button>
-              <button 
+              <button
                 disabled={isPublishing}
                 onClick={handlePublish}
                 className="flex-1 bg-[#FFCC00] text-[#1A1A1A] font-bold py-3.5 rounded-xl shadow-sm transition-all hover:bg-[#E6B800] active:scale-95 flex justify-center items-center"
