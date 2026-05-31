@@ -70,53 +70,35 @@ function canViewPrivateScript(script, viewerUserId) {
 function getVisibleContent(script, viewerUserId) {
     if (!canViewPrivateScript(script, viewerUserId)) {
         return {
-            visible: true,
-            masked: false,
-            content: {
-                isPrivate: true,
-                text: '비공개 질문입니다.',
-            },
+            isPrivate: true,
+            pieces: [{ text: '비공개 질문 및 답변입니다.', isMasked: false }],
         };
     }
 
     const content = script.content;
 
     if (content && Array.isArray(content.pieces)) {
-        const isMaskedParagraph = content.pieces.some(p => p.isMasked);
-
         return {
-            visible: true,
-            masked: isMaskedParagraph,
-            content: {
-                pieces: content.pieces.map(piece => {
-                    if (piece.isMasked) {
-                        return {
-                            ...piece,
-                            text: '마스킹된 부분입니다.',
-                        };
-                    }
-                    return piece;
-                })
-            }
+            isPrivate: script.isPrivate || false,
+            pieces: content.pieces.map(piece => ({
+                text: piece.text || '',
+                isMasked: piece.isMasked || false
+            }))
         };
     }
 
     if (hasMaskedFlag(script.content)) {
         // 마스킹된 단락은 멘토/멘티 모두 원문 비노출
         return {
-            visible: true,
-            masked: true,
-            content: {
-                isMasked: true,
-                text: '마스킹된 단락입니다.',
-            },
+            isPrivate: script.isPrivate || false,
+            pieces: [{ text: content?.text || '마스킹된 단락입니다.', isMasked: true }]
         };
     }
 
+    // 4. 일반 raw 텍스트 상태인 경우 정규화
     return {
-        visible: true,
-        masked: false,
-        content: script.content,
+        isPrivate: script.isPrivate || false,
+        pieces: [{ text: content?.text || String(content || ''), isMasked: false }]
     };
 }
 
@@ -125,14 +107,17 @@ function mapScriptParagraph(script, viewerUserId) {
     const visibility = getVisibleContent(script, viewerUserId);
 
     return {
-        scriptId: script.scriptId,
+        scriptId: script.scriptId.toString(),
         isPrivate: script.isPrivate,
         createdAt: script.createdAt,
-        content: visibility.content,
+        content: {
+            pieces: visibility.pieces,
+            startTime: script.content?.startTime ?? null // 타임스탬프 백업 복원
+        },
         speaker: {
-            userId: script.userId,
-            nickname: script.user?.nickname ?? null,
-            role: script.user?.role ?? null,
+            userId: script.userId.toString(),
+            nickname: script.user?.nickname ?? '알 수 없음',
+            role: script.user?.role ?? 'MENTEE',
             isHostMentor: script.userId === script.mentoring.userId,
         },
     };
@@ -225,7 +210,7 @@ router.get('/:mentoringId', requireUser, async (req, res, next) => {
                     include: {
                         user: true,
                     },
-                    orderBy: [{ createdAt: 'asc' }, { scriptId: 'asc' }],
+                    orderBy: [{ scriptId: 'asc' }, { createdAt: 'asc' }],
                 },
             },
         });
