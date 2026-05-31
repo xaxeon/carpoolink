@@ -244,33 +244,9 @@ app.post('/commands/execute', async (req, res) => {
                 mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
                 break;
             }
-            case 'NEXT_QUESTION': {
-                const mentor = [...room.peers.value()].find(p => p.role === 'MENTOR');
-                mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
-                break;
-            }
             case 'COMPLETE_ANSWER': {
-                const mentor = [...room.peers.value()].find(p => p.role === 'MENTOR');
+                const mentor = [...room.peers.values()].find(p => p.role === 'MENTOR');
                 mentor?.socket.emit('signal', { event: 'voice-command', data: { type } });
-                break;
-            }
-            case 'START_PRIVATE': {
-                const privateQuestion = await prisma.question.findFirst({
-                    where: { mentoringId: BigInt(mentoringId), isPrivate: true, status: 'ANSWERING' },
-                    select: { userId: true },
-                });
-                const targetUserId = privateQuestion?.userId?.toString() ?? null;
-                await mediaOrchestrator.pauseMenteeConsumers(mentoringId, targetUserId);
-                for (const peer of room.peers.values()) {
-                    peer.socket.emit('signal', { event: 'voice-command', data: { type } });
-                }
-                break;
-            }
-            case 'END_PRIVATE': {
-                await mediaOrchestrator.resumeMenteeConsumers(mentoringId);
-                for (const peer of room.peers.values()) {
-                    peer.socket.emit('signal', { event: 'voice-command', data: { type } });
-                }
                 break;
             }
         }
