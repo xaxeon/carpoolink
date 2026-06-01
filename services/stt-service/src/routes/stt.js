@@ -15,8 +15,6 @@ const COMMANDS = [
   { keywords: ['답변', '완료'], type: 'COMPLETE_ANSWER' },      // 질문 답변 완료
 ];
 
-const privateState = new Map();
-
 /*
 POST /stt/chunk
 multipart/form-data:
@@ -29,7 +27,7 @@ multipart/form-data:
 */
 router.post("/chunk", upload.single("audio"), async (req, res) => {
   try {
-    const { userId, mentoringId, chunkIndex, startTime, endTime, sessionOffset } = req.body;
+    const { userId, mentoringId, chunkIndex, startTime, endTime, sessionOffset, isPrivate } = req.body;
     console.log('[STT] /chunk 수신', { userId, mentoringId, chunkIndex, audioSize: req.file?.size });
 
     // 필수값 체크
@@ -62,7 +60,7 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
       }).catch((e) => console.error('[COMMAND] 전송 실패', e.message));
     }
 
-    const isPrivate = privateState.get(String(mentoringId)) ?? false;
+    const isPrivateBool = isPrivate === 'true' || isPrivate === true;
 
     // 2. DB 저장
     const saved = await saveScript(
@@ -72,7 +70,7 @@ router.post("/chunk", upload.single("audio"), async (req, res) => {
         startTime: startTime ? parseFloat(startTime) : undefined,
         endTime: endTime ? parseFloat(endTime) : undefined,
         sessionOffset: sessionOffset ? parseFloat(sessionOffset) : undefined,
-        isPrivate,
+        isPrivate: isPrivateBool,
       },
       {
         userId,
@@ -303,16 +301,8 @@ function detectCommand(text) {
   return null;
 }
 
-// 비공개 상태 변경용 엔드포인트
-router.post('/session/:mentoringId/private', (req, res) => {
-  const { isPrivate } = req.body;
-  privateState.set(String(req.params.mentoringId), Boolean(isPrivate));
-  res.json({ ok: true });
-})
-
 // 멘토링 종료 시 stt 세션 상태를 정리하는 api
 router.post('/session/:mentoringId/end', (req, res) => {
-  privateState.delete(String(req.params.mentoringId));
   console.log('[STT] 세션 정리됨:', req.params.mentoringId, '| 남은 세션:', privateState.size);
   res.json({ ok: true });
 })

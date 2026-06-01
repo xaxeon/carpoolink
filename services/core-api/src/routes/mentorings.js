@@ -46,7 +46,6 @@ function mapQuestion(question) {
         priorityScore: question.priorityScore,
         status: question.status,
         createdAt: question.createdAt,
-        answerContent: question.answerContent ?? null,
         answeredAt: question.answeredAt ?? null,
         user: question.user
             ? {

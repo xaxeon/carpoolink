@@ -98,7 +98,8 @@ export class MediaSoupOrchestrator {
             mentoringId: key,
             isGroup: requestedIsGroup,
             router,
-            peers: new Map()
+            peers: new Map(),
+            isPrivate: false,
         };
 
         this.rooms.set(key, room);
@@ -364,8 +365,14 @@ export class MediaSoupOrchestrator {
     }
 
     async pauseMenteeConsumers(mentoringId, exceptUserId = null) {
+        // 멘토링 방 확인
         const room = this.rooms.get(Number(mentoringId));
         if (!room) return;
+
+        // 멘토링 방의 비공개 상태(스크립트 저장에 사용됨) 설정
+        this.rtpForwarder.setPrivateStateForMentoring(Number(mentoringId), true);
+
+        // 멘티 consumer 일시정지, exceptUserId와 일치하는 멘티는 제외
         for (const peer of room.peers.values()) {
             if (peer.role !== 'MENTEE') continue;
             if (exceptUserId && String(peer.userId) === String(exceptUserId)) continue; //제외
@@ -382,8 +389,14 @@ export class MediaSoupOrchestrator {
     }
 
     async resumeMenteeConsumers(mentoringId) {
+        // 멘토링 방 확인
         const room = this.rooms.get(Number(mentoringId));
         if (!room) return;
+
+        // 멘토링 방의 비공개 상태(스크립트 저장에 사용됨) 해제
+        this.rtpForwarder.setPrivateStateForMentoring(Number(mentoringId), false);
+
+        // 멘티 consumer 재개
         for (const peer of room.peers.values()) {
             if (peer.role !== 'MENTEE') continue;
             for (const consumer of peer.consumers.values()) {
