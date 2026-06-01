@@ -129,11 +129,12 @@ router.get('/', requireUser, async (req, res, next) => {
     try {
         // 스크립트 유형 (전체/1:N/1:1)
         const type = parseType(req.query.type);
+        const currentUserId = req.user.userId;
 
         // 조건에 맞는 멘토링 목록 조회
         const mentorings = await prisma.mentoring.findMany({
             where: {
-                ...buildParticipatedMentoringWhere(req.user.userId, type),
+                ...buildParticipatedMentoringWhere(currentUserId, type),
                 scripts: {
                     some: {},
                 },
@@ -146,6 +147,16 @@ router.get('/', requireUser, async (req, res, next) => {
                         },
                     },
                 },
+                participants: {
+                    include: {
+                        user: {
+                            select: {
+                                userId: true,
+                                nickname: true,
+                            }
+                        }
+                    }
+                },
                 _count: {
                     select: {
                         scripts: true,
@@ -157,20 +168,39 @@ router.get('/', requireUser, async (req, res, next) => {
 
         res.json(
             serialize({
-                mentorings: mentorings.map((mentoring) => ({
-                    mentoringId: mentoring.mentoringId,
-                    title: mentoring.title,
-                    startedAt: mentoring.startedAt,
-                    endedAt: mentoring.endedAt ?? null,
-                    isGroup: mentoring.isGroup,
-                    isScriptPublished: mentoring.isScriptPublished,
-                    host: {
-                        userId: mentoring.hostMentor.userId,
-                        nickname: mentoring.hostMentor.nickname,
-                        mentorId: mentoring.hostMentor.mentorProfile?.mentorId ?? null,
-                    },
-                    scriptCount: mentoring._count.scripts,
-                })),
+                mentorings: mentorings.map((mentoring) => {
+                    const isUserHost = mentoring.hostMentor.userId === currentUserId;
+
+                    // 일대일(1:1)이고 내가 호스트라면 상대방은 첫 번째 참여자(멘티)
+                    // 그 외(내가 멘티이거나 1:N)라면 상대방은 호스트(멘토)
+                    const isOneOnOne = !mentoring.isGroup;
+                    const counterpartUser = (isOneOnOne && isUserHost && mentoring.participants?.[0]?.user)
+                        ? mentoring.participants[0].user
+                        : mentoring.hostMentor;
+
+                    return {
+                        mentoringId: mentoring.mentoringId,
+                        title: mentoring.title,
+                        startedAt: mentoring.startedAt,
+                        endedAt: mentoring.endedAt ?? null,
+                        isGroup: mentoring.isGroup,
+                        isScriptPublished: mentoring.isScriptPublished,
+
+                        // 기존 host 객체는 유지하되, 프론트엔드 뷰에 맞춰 counterpart 객체를 추가
+                        host: {
+                            userId: mentoring.hostMentor.userId,
+                            nickname: mentoring.hostMentor.nickname,
+                            mentorId: mentoring.hostMentor.mentorProfile?.mentorId ?? null,
+                        },
+                        counterpart: {
+                            userId: counterpartUser.userId,
+                            nickname: counterpartUser.nickname,
+                            // 내가 멘토인 경우 상대는 멘티이므로 role 판별에 쓸 수 있게 보냅니다.
+                            role: isUserHost ? "MENTEE" : "MENTOR"
+                        },
+                        scriptCount: mentoring._count.scripts,
+                    };
+                }),
             })
         );
     } catch (error) {

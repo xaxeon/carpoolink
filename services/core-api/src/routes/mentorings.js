@@ -580,7 +580,7 @@ router.get('/one-on-one', requireUser, async (req, res, next) => {
                 ? mentoring.participants.find((p) => p.userId !== currentUserId)?.user
                 : mentoring.hostMentor;
             const normalizedStatus = mentoring.status === 'COMPLETED' ? 'COMPLETE' : mentoring.status;
-            const counterpartRole = isHost ? 'MENTEE' : 'MENTOR';
+            const counterpartRole = isHost ? 'MENTOR' : 'MENTEE';
 
             return {
                 mentoringId: mentoring.mentoringId,
