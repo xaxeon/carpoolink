@@ -131,7 +131,7 @@ function LiveListContent() {
         hasCamera: true,
         hasMicrophone: true,
       }, {
-        headers:{
+        headers: {
           'x-user-id': currentUserId // 미디어 서버가 요구하는 필수 식별값 추가
         }
       });
@@ -257,7 +257,7 @@ function LiveListContent() {
                   <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" /> LIVE
                 </div>
                 <div className="absolute bottom-3 right-3 bg-black/70 text-white text-[12px] font-bold px-2.5 py-1 rounded-[8px] flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5" /> {stream.participantCount}명 시청 중
+                  <Users className="w-3.5 h-3.5" /> {stream.participantCount}명 시청
                 </div>
               </div>
 

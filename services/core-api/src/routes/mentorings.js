@@ -145,7 +145,7 @@ router.get('/group', async (req, res, next) => {
                             ? mentoring.hostMentor.mentorProfile.fields.map(f => f.fieldName)
                             : [],
                     },
-                    participantCount: mentoring._count.participants + 1,
+                    participantCount: mentoring._count.participants,
                 })),
             })
         );
@@ -701,7 +701,7 @@ router.post('/:id/recommendations', requireUser, async (req, res, next) => {
         // 4. DB 조회: STT 스크립트 추출 (최근 3개)
         const recentScripts = await prisma.script.findMany({
             where: { mentoringId },
-            orderBy: { createdAt: 'desc' }, 
+            orderBy: { createdAt: 'desc' },
             take: 3,
         });
 
@@ -709,14 +709,14 @@ router.post('/:id/recommendations', requireUser, async (req, res, next) => {
         const formattedScripts = recentScripts
             .reverse() // 최신순으로 가져왔으므로 다시 시간순으로 정렬
             // 스키마에 따라 content 또는 text 필드 사용 (여기서는 content로 가정)
-            .map(s => `멘토 (음성인식): ${s.content?.text || s.content || ''}`) 
+            .map(s => `멘토 (음성인식): ${s.content?.text || s.content || ''}`)
             .join('\n');
 
         const formattedChats = Array.isArray(chats)
             ? chats.map(c => `${c.author}: ${c.content}`).join('\n')
             : '';
 
-        const excludeText = excludeQuestions.length > 0 
+        const excludeText = excludeQuestions.length > 0
             ? `\n[주의 및 지시사항]\n아래 질문들은 이전에 이미 추천된 질문입니다. 반드시 아래 내용과 겹치지 않는 완전히 새로운 질문을 생성하세요:\n${excludeQuestions.map(q => `- ${q}`).join('\n')}`
             : '';
 
@@ -762,7 +762,7 @@ ${excludeText}
 
     } catch (error) {
         console.error('🚨 Core API - AI 추천 중계 실패:', error?.response?.data || error.message);
-        
+
         if (error.response) {
             return res.status(error.response.status).json({
                 message: error.response.data?.message || '추천 서비스 통신 오류',

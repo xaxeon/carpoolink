@@ -857,7 +857,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     </div>
                     <div className="flex items-center text-gray-400 text-sm font-medium">
                         <Users className="w-4 h-4 mr-1.5" />
-                        {onlineUserCount}
+                        {onlineUserCount - 1}
                     </div>
                 </div>
             </header>
