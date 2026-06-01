@@ -78,12 +78,14 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
     if (id) fetchScriptData();
   }, [id]);
 
-  // 2. 렌더링 동기화 용 useEffect
-
+  // 2. 렌더링 동기화용 useEffect
   useEffect(() => {
     if (!isLoading && editorRef.current && scriptList.length > 0) {
 
-      const htmlContent = scriptList.map((s: any) => {
+      let finalHtmlContent = "";
+      let inPrivateBlock = false;
+
+      scriptList.forEach((s: any, index: number) => {
         const scriptId = s.scriptId || String(s.id);
 
         let parsedContent = s.content;
@@ -95,15 +97,17 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
         const speakerRole = s.user?.role || s.speakerRole || parsedContent?.speakerRole || "MENTEE";
         const rawTime = parsedContent?.startTime ?? s.startTime ?? parsedContent?.timestamp ?? s.timestamp;
 
-        // 발화자 뱃지 및 타임스탬프 렌더링 로직 (기존 코드 유지)
+        // [1] 발화자 뱃지 (지워짐 방지 보강)
         let speakerBadge = "";
-        if (mentoringInfo?.isGroup === false && speakerName) {
+        if (speakerName) {
           const isMentor = speakerRole === "MENTOR";
           const roleColor = isMentor ? "text-[#FFCC00] bg-[#FFCC00]/10" : "text-blue-500 bg-blue-50";
           const roleText = isMentor ? "멘토" : "멘티";
-          speakerBadge = `<span class="text-[11px] font-bold ${roleColor} px-1.5 py-0.5 rounded ml-2 select-none inline-block align-middle" contenteditable="false">[${roleText}] ${speakerName}</span>`;
+          // select-none 및 user-select 강제 적용을 위해 inline-style 보강
+          speakerBadge = `<span class="text-[11px] font-bold ${roleColor} px-1.5 py-0.5 rounded ml-2 select-none inline-block align-middle" contenteditable="false" style="user-select: none;">[${roleText}] ${speakerName}</span>`;
         }
 
+        // [2] 타임스탬프 (지워짐 방지 보강)
         let timeString = "";
         if (rawTime !== undefined && rawTime !== null) {
           if (Number(rawTime) > 1000000000000) {
@@ -113,39 +117,76 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
             timeString = `${parseFloat(rawTime).toFixed(1)}s`;
           }
         }
-        const timestampBadge = timeString ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none inline-block align-middle" contenteditable="false">${timeString}</span>` : "";
+        // 백스페이스 증발을 완전히 막기 위해 user-select 보호막을 씌웁니다.
+        const timestampBadge = timeString ? `<span class="text-[12px] text-gray-400 font-medium ml-2 select-none inline-block align-middle" contenteditable="false" style="user-select: none;">${timeString}</span>` : "";
 
-        // 비공개 처리 (기존 코드 유지)
-        if (s.isPrivate === true || String(s.isPrivate) === "true") {
-          return `<div class="script-block leading-relaxed mb-1.5" data-script-id="${scriptId}" contenteditable="false"><span class="script-content text-gray-400 italic">비공개 구간 질문 및 답변입니다.</span>${speakerBadge}${timestampBadge}</div>`;
-        }
-
-        // 핵심 수정: textHTML 조립 분기 처리
+        // [3] 텍스트 조립
         let textHTML = "";
+        const rawText = parsedContent?.text || s.text || String(parsedContent || "");
+        const cleanRawText = rawText.replace("(질문 읽기) 비공개 질문입니다.", "").trim();
 
         if (Array.isArray(parsedContent?.pieces)) {
-          // 1. 이미 발행을 거쳐 pieces 세부 마스킹 데이터 구조를 가진 경우
           textHTML = parsedContent.pieces.map((p: any) => {
-            const escapedText = p.text.replace(/\n/g, "<br>");
+            const cleanPieceText = p.text.replace("(질문 읽기) 비공개 질문입니다.", "").trim();
+            const escapedText = cleanPieceText.replace(/\n/g, "<br>");
             if (p.isMasked === true || p.isMasked === "true") {
               return `<span class="masked-piece" style="background-color: #FFCC00; display: inline;">${escapedText}</span>`;
             }
             return escapedText;
           }).join("");
         } else {
-          // 2. 발행 전 단일 문자열 text 구조인 경우
-          const rawText = parsedContent?.text || s.text || String(parsedContent || "");
-          textHTML = rawText.trim().replace(/\n/g, "<br>");
-
+          textHTML = cleanRawText.replace(/\n/g, "<br>");
           if (s.isMasked === true || s.isMasked === "true" || parsedContent?.isMasked === true) {
             textHTML = `<span class="masked-piece" style="background-color: #FFCC00; display: inline;">${textHTML}</span>`;
           }
         }
 
-        return `<div class="script-block leading-relaxed mb-1.5" data-script-id="${scriptId}"><span class="script-content">${textHTML}</span>${speakerBadge}${timestampBadge}</div>`;
-      }).join('');
+        // 비공개 구간 시작 여부 판별
+        const isStartOfPrivateText = rawText.trim().startsWith("(질문 읽기) 비공개 질문입니다.");
+        const isCurrentlyPrivate = s.isPrivate === true || String(s.isPrivate) === "true";
 
-      editorRef.current.innerHTML = htmlContent;
+        if (isStartOfPrivateText || (isCurrentlyPrivate && !inPrivateBlock)) {
+          if (inPrivateBlock) {
+            finalHtmlContent += `</div></div>`;
+          }
+          inPrivateBlock = true;
+
+          // 박스 상단에 padding-top(pt-9)을 주어 본문 텍스트가 뱃지 라인을 침범하지 않게 격리합니다.
+          finalHtmlContent += `<div class="private-section bg-gray-100 border border-gray-100 rounded-lg p-4 pt-11 my-6 relative transition-colors"><span class="absolute top-2 left-2 text-[11px] font-bold text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded select-none inline-block" contenteditable="false">비공개 질문 구간</span><div class="private-content-inner space-y-1.5">`;
+        }
+
+        // 현재 스크립트 블록 렌더링
+        finalHtmlContent += `<div class="script-block leading-relaxed mb-1.5" data-script-id="${scriptId}"><span class="script-content">${textHTML}</span>${speakerBadge}${timestampBadge}</div>`;
+
+        // 비공개 구간 종료 여부 판별
+        const nextScript = scriptList[index + 1];
+        let nextIsPrivateText = false;
+        let nextIsPrivateFlag = false;
+
+        if (nextScript) {
+          let nextParsedContent = nextScript.content;
+          if (typeof nextParsedContent === 'string') {
+            try { nextParsedContent = JSON.parse(nextParsedContent); } catch (e) { nextParsedContent = { text: nextParsedContent }; }
+          }
+          const nextRawText = nextParsedContent?.text || nextScript.text || String(nextParsedContent || "");
+          nextIsPrivateText = nextRawText.trim().startsWith("(질문 읽기) 비공개 질문입니다.");
+          nextIsPrivateFlag = nextScript.isPrivate === true || String(nextScript.isPrivate) === "true";
+        }
+
+        const shouldClosePrivateBlock = inPrivateBlock && (
+          !nextScript ||
+          (!nextIsPrivateFlag && !nextIsPrivateText) ||
+          nextIsPrivateText
+        );
+
+        if (shouldClosePrivateBlock) {
+          // 💡 수정 포인트 B: 닫는 태그도 띄어쓰기 없이 타이트하게 연결해 의도치 않은 마진 발생 방지
+          finalHtmlContent += `</div></div>`;
+          inPrivateBlock = false;
+        }
+      });
+
+      editorRef.current.innerHTML = finalHtmlContent;
       updateUndoState();
     }
   }, [isLoading, scriptList, mentoringInfo]);
@@ -343,6 +384,17 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
         .editor-container.mentee-view span[style*="#FFCC00"], 
         .editor-container.mentee-view .masked-piece {
           color: transparent !important; background-color: #FFCC00 !important; user-select: none;
+        }
+
+        .private-section { display: block; }
+        .private-section [contenteditable="false"] {
+          cursor: default;
+          pointer-events: none;
+          user-select: none;
+        }
+        .script-block span[contenteditable="false"] {
+          user-select: none;
+          pointer-events: none;
         }
       `}</style>
 
