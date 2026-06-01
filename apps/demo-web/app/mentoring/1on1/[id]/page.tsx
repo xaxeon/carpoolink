@@ -12,10 +12,11 @@ interface ChatMessage {
   text: string;
 }
 
-export default function PrivateMentoringPage() {
-  const [role, setRole] = useState<string>("MENTEE");
-  const [userId, setUserId] = useState<number>(2);
-  const [userName, setUserName] = useState<string>("익명");
+function PrivateMentoringContent({ role, userId, userName }: {
+  role: string;
+  userId: number;
+  userName: string;
+}) {
   const [opponentNickname, setOpponentNickname] = useState<string>("상대방 연결 대기 중...");
 
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
@@ -31,17 +32,6 @@ export default function PrivateMentoringPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]); // 더미 데이터 제거
   const [isChatClosed, setIsChatClosed] = useState(false);
 
-  useEffect(() => {
-    const storedRole = localStorage.getItem("userRole")?.toUpperCase();
-    if (storedRole) setRole(storedRole);
-
-    const storedUserId = localStorage.getItem("userId");
-    if (storedUserId) setUserId(Number(storedUserId));
-
-    const storedName = localStorage.getItem("nickname") || "익명";
-    setUserName(storedName);
-  }, []);
-
   // 1. 소켓 및 멘토링 세션 연결 (화상/음성용 4002번)
   const { sessionData, isLoading, error, isConnected, peerId, socket, endMentoring } =
     useMentoringSession({ role, userId });
@@ -52,8 +42,8 @@ export default function PrivateMentoringPage() {
     mentoringId: sessionData?.mentoringId?.toString() || "",
     peerId: peerId || "",
     role,
-    mentoringType: "ONE_ON_ONE" as const, 
-    isJoined: isConnected, 
+    mentoringType: "ONE_ON_ONE" as const,
+    isJoined: isConnected,
   }), [socket, sessionData?.mentoringId, peerId, role, isConnected]);
 
   const webRtcSession = useWebRtcSession(webRtcArgs);
@@ -63,7 +53,7 @@ export default function PrivateMentoringPage() {
   const setMicOn = webRtcSession.setMicOn;
   const remoteStreams = webRtcSession.remoteStreams;
   const isReady = webRtcSession.isReady;
-  
+
   // 비디오 트랙 미검출 에러 발생 시 앱이 크래시되지 않도록 마스킹 처리
   const webRtcError = useMemo(() => {
     if (!webRtcSession.error) return null;
@@ -492,4 +482,36 @@ export default function PrivateMentoringPage() {
       )}
     </main>
   );
+}
+
+export default function PrivateMentoringPage() {
+  const [isReady, setIsReady] = useState(false);
+  const [role, setRole] = useState<string>("MENTEE");
+  const [userId, setUserId] = useState<number | null>(null);
+  const [userName, setUserName] = useState<string>("익명");
+
+  useEffect(() => {
+    // 로컬스토리지 정보 확정
+    const storedRole = localStorage.getItem("role")?.toUpperCase() || "MENTEE";
+    const storedUserId = localStorage.getItem("userId");
+    const storedName = localStorage.getItem("nickname") || "익명";
+
+    if (storedUserId) {
+      setRole(storedRole);
+      setUserId(Number(storedUserId));
+      setUserName(storedName);
+      setIsReady(true); // 모든 정보가 준비되었을 때만 true
+    }
+  }, []);
+
+  if (!isReady || !userId) {
+    return (
+      <main className="flex flex-col w-full h-[100dvh] bg-[#161616] text-white items-center justify-center space-y-5">
+        <div className="w-12 h-12 border-4 border-[#FFCC00]/20 border-t-[#FFCC00] rounded-full animate-spin"></div>
+        <p className="text-gray-400">방송 세션을 준비 중입니다...</p>
+      </main>
+    );
+  }
+
+  return <PrivateMentoringContent role={role} userId={userId} userName={userName} />;
 }

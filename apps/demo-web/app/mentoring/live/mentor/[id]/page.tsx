@@ -124,16 +124,17 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 console.log(`🎤 [Voice Command 수신]: ${type}`);
 
                 switch (type) {
-                    case 'READ_QUESTION':
-                        // 현재 화면에 질문이 있고, 이미 읽고 있는 상태가 아닐 때만 실행
+                    case 'READ_QUESTION':   // 질문 듣기
+                        // 현재 화면에 질문이 있고, 이미 듣고 있는 상태가 아닐 때만 실행
                         if (currentQuestionRef.current && !isReading) {
-                            console.log("🤖 음성 명령으로 질문 읽기를 시작합니다.");
+                            console.log("🤖 음성 명령으로 질문 듣기를 시작합니다.");
                             acknowledgeQuestion(currentQuestionRef.current);
                         }
                         break;
-                    case 'READ_QUESTION_AGAIN':
-                        if (currentQuestionRef.current && !isReading) {
-                            console.log("🤖 음성 명령으로 질문 다시 읽기를 시작합니다.");
+                    case 'READ_QUESTION_AGAIN':     // 다시 듣기
+                        // 현재 화면에 질문이 있고, 질문이 ANSWERING 상태일 때
+                        if (currentQuestionRef.current && isReading) {
+                            console.log("🤖 음성 명령으로 질문 다시 듣기를 시작합니다.");
                             // 비공개 질문 여부를 확인하여 TTS 안내 멘트를 조립.
                             const ttsText = currentQuestionRef.current.isPrivate
                                 ? `비공개 질문입니다. ${currentQuestionRef.current.content}`
@@ -142,8 +143,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             playQuestionAudio(ttsText);
                         }
                         break;
-                    case 'COMPLETE_ANSWER':
-                        if (currentQuestionRef.current) {
+                    case 'COMPLETE_ANSWER':     // 답변 완료
+                        // 현재 화면에 질문이 있고, 질문이 ANSWERING 상태일 때
+                        if (currentQuestionRef.current && isReading) {
                             console.log("🤖 답변을 종료합니다.");
                             completeQuestion(currentQuestionRef.current.id);
                         }
