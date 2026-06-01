@@ -628,7 +628,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            userId: String(userId),
+                            userId: String(question.userId),
                             mentoringId: String(mentoringId),
                             text: scriptText,
                             isPrivate: question.isPrivate
