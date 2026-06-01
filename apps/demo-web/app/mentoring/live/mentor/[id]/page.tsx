@@ -985,9 +985,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             <div className="flex gap-2">
                                 {currentQuestion && (
                                     <>
-                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">질문 읽기</button>
+                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">질문 듣기</button>
                                         <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
-                                        <button onClick={() => acknowledgeQuestion(currentQuestion)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 읽기</button>
+                                        <button onClick={() => acknowledgeQuestion(currentQuestion)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 듣기</button>
                                     </>
                                 )}
                             </div>
