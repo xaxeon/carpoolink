@@ -113,6 +113,8 @@ def route_to_kc_electra(
         return True, "rule_question_requires_confirmation"
 
     if rule_label is None:
+        if tfidf_score < tfidf_threshold:
+            return False, "rule_uncertain_tfidf_negative"
         return True, "rule_uncertain"
 
     return False, "tfidf_direct_decision"

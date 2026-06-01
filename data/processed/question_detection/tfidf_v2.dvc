@@ -1,0 +1,6 @@
+outs:
+- md5: 87ebdff5eb37d20bf49e8fa7494df136.dir
+  size: 205183764
+  nfiles: 3
+  hash: md5
+  path: tfidf_v2

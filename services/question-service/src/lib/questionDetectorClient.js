@@ -22,7 +22,7 @@ const DEFAULT_TFIDF_ARTIFACT_DIR = path.join(
     'services',
     'model',
     'question_detection',
-    'tfidf_lr_rule_filter_off',
+    'tfidf_lr_v2',
 );
 
 const DEFAULT_KC_ELECTRA_DIR = path.join(
@@ -30,7 +30,7 @@ const DEFAULT_KC_ELECTRA_DIR = path.join(
     'services',
     'model',
     'question_detection',
-    'kc_electra_question_detector',
+    'kc_electra_v2',
 );
 
 function getPythonExecutable() {

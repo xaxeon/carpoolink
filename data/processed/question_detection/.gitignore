@@ -2,3 +2,7 @@
 /valid.csv
 /test.csv
 /tfidf_ready
+/augmentation
+/electra_v2
+/tfidf_v2
+/tfidf_v2_ready

@@ -77,8 +77,8 @@ def normalize_for_tfidf(text: str) -> str:
     text = re.sub(r"[|]+", " ", text)
 
     # 한글/영문/숫자/기본 문장부호만 남기고 나머지는 공백 처리
-    # 질문 판별에 중요한 ?, ! 는 유지
-    text = re.sub(r"[^0-9a-z가-힣\s?!.,]", " ", text)
+    # ? 제거: 모델이 ?에 의존하지 않고 문장 구조로 질문을 판별하도록
+    text = re.sub(r"[^0-9a-z가-힣\s!.,]", " ", text)
 
     # 공백 정리
     text = re.sub(r"\s+", " ", text).strip()

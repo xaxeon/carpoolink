@@ -1,0 +1,6 @@
+outs:
+- md5: dea77ae8ce2b3ab44843050b81651d47.dir
+  size: 61316134
+  nfiles: 3
+  hash: md5
+  path: electra_v2
