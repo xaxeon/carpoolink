@@ -128,7 +128,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           textHTML = parsedContent.pieces.map((p: any) => {
             const escapedText = p.text.replace(/\n/g, "<br>");
             if (p.isMasked === true || p.isMasked === "true") {
-              return `<span style="background-color: #FFCC00">${escapedText}</span>`;
+              return `<span class="masked-piece" style="background-color: #FFCC00; display: inline;">${escapedText}</span>`;
             }
             return escapedText;
           }).join("");
@@ -138,7 +138,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           textHTML = rawText.trim().replace(/\n/g, "<br>");
 
           if (s.isMasked === true || s.isMasked === "true" || parsedContent?.isMasked === true) {
-            textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
+            textHTML = `<span class="masked-piece" style="background-color: #FFCC00; display: inline;">${textHTML}</span>`;
           }
         }
 
@@ -157,7 +157,6 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
     try {
       const scriptBlocks = editorRef.current.querySelectorAll('.script-block');
-
       const payloadMap = new Map<string, { text: string; isMasked: boolean }[]>();
 
       scriptBlocks.forEach((block) => {
@@ -168,6 +167,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
         const pieces: { text: string; isMasked: boolean }[] = [];
 
+        // 💡 [핵심 수정] 노드 탐색 함수 개선
         const parseNode = (node: Node, isCurrentlyMasked: boolean) => {
           if (node.nodeType === Node.TEXT_NODE) {
             if (node.textContent) {
@@ -177,21 +177,39 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
             const el = node as HTMLElement;
             const tag = el.tagName.toUpperCase();
 
-            // 엔터를 막았기 때문에 BR 태그가 생길 일은 없지만, 기존 데이터 호환을 위해 남겨둠
             if (tag === 'BR') {
               pieces.push({ text: '\n', isMasked: isCurrentlyMasked });
               return;
             }
 
-            const bg = el.style.backgroundColor;
-            const isNodeMasked = bg.includes('rgb(255, 204, 0)') || bg.includes('#FFCC00') || bg.includes('#ffcc00');
-            const effectiveMask = isCurrentlyMasked || isNodeMasked;
+            // 1. 클래스명으로 마스킹 여부 체크
+            const hasMaskClass = el.classList.contains('masked-piece');
+
+            // 2. 인라인 스타일 배경색 추출 및 공백 제거 검사
+            const bg = (el.style.backgroundColor || '').replace(/\s+/g, '').toLowerCase();
+            const hasMaskColor =
+              bg.includes('rgb(255,204,0)') ||
+              bg.includes('#ffcc00') ||
+              bg.includes('rgba(255,204,0'); // 알파 채널 대비
+
+            // 부모가 마스킹 상태이거나, 현재 요소가 마스킹 클래스/컬러를 가졌다면 true
+            const effectiveMask = isCurrentlyMasked || hasMaskClass || hasMaskColor;
 
             el.childNodes.forEach(child => parseNode(child, effectiveMask));
           }
         };
 
-        contentNode.childNodes.forEach(child => parseNode(child, false));
+        // 💡 여기서 추가로 체크! 
+        // 만약 .script-content(텍스트 감싸는 영역) 자체나 최상위 블록에 마스킹 스타일이 입혀졌을 경우를 대비합니다.
+        const contentBg = (contentNode as HTMLElement).style?.backgroundColor || '';
+        const normalizedContentBg = contentBg.replace(/\s+/g, '').toLowerCase();
+        const isContentBlockMasked =
+          normalizedContentBg.includes('rgb(255,204,0)') ||
+          normalizedContentBg.includes('#ffcc00') ||
+          (contentNode as HTMLElement).classList.contains('masked-piece');
+
+        // 탐색 시작 시 기본 마스킹 상태를 위에서 검사한 결과로 설정합니다.
+        contentNode.childNodes.forEach(child => parseNode(child, isContentBlockMasked));
 
         if (!payloadMap.has(scriptId)) {
           payloadMap.set(scriptId, pieces);
@@ -201,6 +219,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
         }
       });
 
+      // 이하 변환 및 전송 로직 (기존과 동일)
       const payloadScripts = Array.from(payloadMap.entries()).map(([scriptId, rawPieces]) => {
         const mergedPieces = rawPieces.reduce((acc, current) => {
           if (acc.length > 0 && acc[acc.length - 1].isMasked === current.isMasked) {
@@ -297,12 +316,12 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       <style>{`
         .editor-container { outline: none; }
         .editor-container ::selection { background-color: rgba(59, 130, 246, 0.4) !important; color: inherit; }
-        .editor-container span[style*="background-color"] { border-radius: 3px; padding: 2px 0; }
+        .editor-container span[style*="background-color"], .editor-container .masked-piece { background-color: rgb(255, 204, 0) !important; border-radius: 3px; padding: 2px 0; }
         .editor-container span[style*="transparent"], .editor-container span[style*="rgba(0, 0, 0, 0)"] { background-color: transparent !important; }
         
         .editor-container.mentee-view span[style*="rgb(255, 204, 0)"], 
         .editor-container.mentee-view span[style*="#FFCC00"], 
-        .editor-container.mentee-view span[style*="#ffcc00"] {
+        .editor-container.mentee-view .masked-piece {
           color: transparent !important; background-color: #FFCC00 !important; user-select: none;
         }
       `}</style>

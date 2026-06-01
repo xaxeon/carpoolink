@@ -82,16 +82,17 @@ function getVisibleContent(script, viewerUserId) {
             isPrivate: script.isPrivate || false,
             pieces: content.pieces.map(piece => ({
                 text: piece.text || '',
-                isMasked: piece.isMasked || false
+                isMasked: !!piece.isMasked
             }))
         };
     }
 
     if (hasMaskedFlag(script.content)) {
         // 마스킹된 단락은 멘토/멘티 모두 원문 비노출
+        const rawText = content?.text || (typeof content === 'string' ? content : '');
         return {
             isPrivate: script.isPrivate || false,
-            pieces: [{ text: content?.text || '마스킹된 단락입니다.', isMasked: true }]
+            pieces: [{ text: rawText || '마스킹된 단락입니다.', isMasked: true }]
         };
     }
 
@@ -177,7 +178,7 @@ router.get('/', requireUser, async (req, res, next) => {
     }
 });
 
-// [GET] /scripts/{mentoringId} - 해당 멘토링의 스크립트 전문 조회
+// [GET] /scripts/{mentoringId} - 해당 멘토링의 발행 완료된 스크립트 전문 조회
 router.get('/:mentoringId', requireUser, async (req, res, next) => {
     try {
         let mentoringId;
