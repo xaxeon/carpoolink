@@ -198,6 +198,31 @@ jobs:
                 continue
               }
 
+              if [ "$SERVICE" = "question-model-api" ]; then
+                DVC_PY=/tmp/dvc-venv/bin/python
+
+                if [ ! -x "$DVC_PY" ]; then
+                  python3 -m venv /tmp/dvc-venv || {
+                    apt-get update
+                    apt-get install -y python3-venv
+                    python3 -m venv /tmp/dvc-venv
+                  }
+                  "$DVC_PY" -m pip install --upgrade pip
+                  "$DVC_PY" -m pip install "dvc[s3]"
+                fi
+
+                if [ ! -f /app/.dvc/config ]; then
+                  cd /app && "$DVC_PY" -m dvc init --no-scm
+                  "$DVC_PY" -m dvc remote add -d carpoolink s3://capstone2026-carpoolink-dvc-kro
+                  "$DVC_PY" -m dvc remote modify carpoolink region ap-northeast-2
+                fi
+
+                mkdir -p /app/services/model
+                echo "${{ steps.dvc_file.outputs.question_detection_dvc }}" | base64 -d > /app/services/model/question_detection.dvc
+
+                cd /app && "$DVC_PY" -m dvc pull services/model/question_detection.dvc -j 1 --no-run-cache --force
+              fi
+
               # 2. 기존 컨테이너 정리
               docker stop carpoolink-$SERVICE 2>/dev/null || true
               docker rm carpoolink-$SERVICE 2>/dev/null || true
@@ -245,23 +270,6 @@ jobs:
                     ghcr.io/${{ env.REPO_OWNER }}/question-service:${{ github.sha }}
                   ;;
                 "question-model-api")
-                  # DVC 설치 (없으면)
-                  command -v dvc >/dev/null 2>&1 || pip3 install "dvc[s3]" -q
-
-                  # DVC 초기화 및 remote 설정 (없으면)
-                  if [ ! -f /app/.dvc/config ]; then
-                    cd /app && dvc init --no-scm
-                    dvc remote add -d carpoolink s3://capstone2026-carpoolink-dvc-kro
-                    dvc remote modify carpoolink region ap-northeast-2
-                  fi
-
-                  # .dvc 파일 업데이트 (GitHub repo 기준)
-                  mkdir -p /app/services/model
-                  echo "${{ steps.dvc_file.outputs.question_detection_dvc }}" | base64 -d > /app/services/model/question_detection.dvc
-
-                  # S3에서 모델 동기화 (변경된 것만 다운로드)
-                  cd /app && dvc pull services/model/question_detection.dvc
-
                   docker run --restart always \
                     -d --name carpoolink-question-model-api \
                     --network carpoolink-network \
