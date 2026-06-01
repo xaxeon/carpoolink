@@ -155,6 +155,12 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+      - name: Read DVC file content
+        id: dvc_file
+        run: |
+          CONTENT=$(cat services/model/question_detection.dvc | base64 -w 0)
+          echo "question_detection_dvc=$CONTENT" >> $GITHUB_OUTPUT
+
       - name: Deploy Services to EC2
         uses: peterkimzz/aws-ssm-send-command@master
         with:
@@ -239,11 +245,23 @@ jobs:
                     ghcr.io/${{ env.REPO_OWNER }}/question-service:${{ github.sha }}
                   ;;
                 "question-model-api")
-                  if [ ! -d /app/services/model/question_detection ]; then
-                    echo "Missing /app/services/model/question_detection on EC2."
-                    echo "Upload or restore the DVC model artifacts before deploying question-model-api."
-                    exit 1
+                  # DVC 설치 (없으면)
+                  command -v dvc >/dev/null 2>&1 || pip3 install "dvc[s3]" -q
+
+                  # DVC 초기화 및 remote 설정 (없으면)
+                  if [ ! -f /app/.dvc/config ]; then
+                    cd /app && dvc init --no-scm
+                    dvc remote add -d carpoolink s3://capstone2026-carpoolink-dvc-kro
+                    dvc remote modify carpoolink region ap-northeast-2
                   fi
+
+                  # .dvc 파일 업데이트 (GitHub repo 기준)
+                  mkdir -p /app/services/model
+                  echo "${{ steps.dvc_file.outputs.question_detection_dvc }}" | base64 -d > /app/services/model/question_detection.dvc
+
+                  # S3에서 모델 동기화 (변경된 것만 다운로드)
+                  cd /app && dvc pull services/model/question_detection.dvc
+
                   docker run --restart always \
                     -d --name carpoolink-question-model-api \
                     --network carpoolink-network \
