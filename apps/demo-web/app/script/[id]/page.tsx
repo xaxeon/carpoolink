@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Undo2, Send, Bell, MousePointer2, Grab, Eraser, EyeOff, Loader2 } from "lucide-react";
+import { ChevronLeft, Undo2, Send, Bell, Info, Grab, Eraser, EyeOff, Loader2, X } from "lucide-react";
 
 import apiClient from "@/lib/apiClient";
 
@@ -326,24 +326,15 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       <div className={`flex items-center justify-between px-5 py-3 border-b border-gray-100 border-dashed bg-[#FAFAFA] shrink-0 transition-all duration-300 overflow-hidden
         ${isMenteeView ? 'max-h-0 opacity-0 py-0' : 'max-h-20 opacity-100'}
       `}>
-        <div className="flex bg-gray-200/60 p-1 rounded-xl">
-          <button onClick={() => setEditMode("drag")} className={`px-4 py-1.5 text-[13px] font-bold rounded-lg transition-all flex items-center gap-1.5 ${editMode === "drag" ? 'bg-[#FFCC00] text-[#1A1A1A] shadow-sm' : 'text-gray-500'}`}>
-            <Grab className="w-3.5 h-3.5" /> 드래그
-          </button>
-          <button onClick={() => setEditMode("click")} className={`px-4 py-1.5 text-[13px] font-bold rounded-lg transition-all flex items-center gap-1.5 ${editMode === "click" ? 'bg-[#FFCC00] text-[#1A1A1A] shadow-sm' : 'text-gray-500'}`}>
-            <MousePointer2 className="w-3.5 h-3.5" /> 원클릭
-          </button>
+        <div className="`px-4 py-1.5 text-[13px] rounded-lg transition-all flex items-center gap-1.5 text-gray-500">
+          <Info className="w-4 h-4" />민감한 정보는 드래그하여 가릴 수 있습니다.
         </div>
 
         <div className="flex items-center gap-2">
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('mask')} className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹">
-            <EyeOff className="w-4 h-4" />
-          </button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('erase')} className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹 해제">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('mask')} className="bg-gray-100 text-gray-500 text-[12px] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹">
             <Eraser className="w-4 h-4" />
           </button>
-          <div className="h-4 w-[1px] bg-gray-300 mx-1" />
-          <button onMouseDown={(e) => e.preventDefault()} onClick={handleUndo} disabled={!canUndo} className={`p-2 rounded-lg transition-colors ${canUndo ? 'text-gray-700 hover:bg-gray-200' : 'text-gray-300 cursor-not-allowed'}`} title="실행 취소">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('erase')} className="bg-gray-100 text-gray-500 text-[12px] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹 해제">
             <Undo2 className="w-4 h-4" />
           </button>
         </div>
@@ -357,7 +348,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           </div>
         ) : (
           <>
-            <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase">Mentoring ID: {id}</p>
+            <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase"></p>
             <h2 className="text-[26px] font-extrabold text-[#1A1A1A] leading-tight mb-8">
               {mentoringInfo?.title}
               <span className="block text-[15px] font-medium text-gray-400 mt-2 tracking-normal">{mentoringInfo?.date}</span>
