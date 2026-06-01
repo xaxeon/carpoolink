@@ -492,7 +492,7 @@ export default function PrivateMentoringPage() {
 
   useEffect(() => {
     // 로컬스토리지 정보 확정
-    const storedRole = localStorage.getItem("role")?.toUpperCase() || "MENTEE";
+    const storedRole = localStorage.getItem("userRole")?.toUpperCase() || "MENTEE";
     const storedUserId = localStorage.getItem("userId");
     const storedName = localStorage.getItem("nickname") || "익명";
 
