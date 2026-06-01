@@ -104,6 +104,23 @@ const getPrimaryAction = (person: MentoringPerson, userRole: string | null) => {
   };
 };
 
+const formatKoreanDateTime = (dateString: string | null | undefined): string => {
+  if (!dateString) return "일정 미정";
+
+  const date = new Date(dateString);
+
+  // 유효하지 않은 날짜인 경우 예외 처리
+  if (isNaN(date.getTime())) return "일정 미정";
+
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+
+  return `${year}년 ${month}월 ${day}일 ${hours}시 ${minutes}분`;
+};
+
 export default function OneOnOneListPage() {
   const router = useRouter();
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -145,7 +162,7 @@ export default function OneOnOneListPage() {
           const mentoringId = Number(item.mentoringId);
           const counterpartName = item.counterpartName || item.counterpart?.nickname || item.host?.nickname || "이름 없음";
 
-          const schedule = item.startedAt || item.scheduledAt || "일정 미정";
+          const schedule = item.startedAt || item.scheduledAt || null;
           const status = String(item.status || item.rawStatus || "COMPLETE").toUpperCase();
 
           return {
@@ -263,7 +280,7 @@ export default function OneOnOneListPage() {
                 </div>
                 <div className="bg-gray-50 p-3 rounded-xl mb-4 text-[13px]">
                   <div className="flex gap-2 mb-1"><span className="font-bold text-gray-500 w-20">멘토링 제목</span><span>{person.title}</span></div>
-                  <div className="flex gap-2"><span className="font-bold text-gray-500 w-14">일정</span><span className="font-bold">{person.lastMentoring}</span></div>
+                  <div className="flex gap-2"><span className="font-bold text-gray-500 w-20">일정</span><span className="font-bold">{formatKoreanDateTime(person.lastMentoring)}</span></div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveMessage(person)} className="flex-1 py-2.5 bg-gray-100 rounded-xl font-bold text-[14px] hover:bg-gray-200 transition-colors cursor-pointer">메시지</button>

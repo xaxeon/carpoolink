@@ -628,7 +628,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            userId: String(userId),
+                            userId: String(question.userId),
                             mentoringId: String(mentoringId),
                             text: scriptText,
                             isPrivate: question.isPrivate
@@ -857,7 +857,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     </div>
                     <div className="flex items-center text-gray-400 text-sm font-medium">
                         <Users className="w-4 h-4 mr-1.5" />
-                        {onlineUserCount}
+                        {onlineUserCount - 1}
                     </div>
                 </div>
             </header>
@@ -912,7 +912,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                         className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
                                     >
                                         <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
-                                        {isReading ? '읽는 중...' : '질문 읽기'}
+                                        {isReading ? '읽는 중...' : '질문 듣기'}
                                     </button>
                                     <button
                                         onClick={() => completeQuestion(Number(currentQuestion?.id))}
@@ -961,7 +961,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     {/* [2] 비디오 화면 영역 */}
                     <div className="w-full aspect-[16/9] bg-[#1A1A1A] rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-2xl border border-gray-800 shrink-0">
                         {isCameraOn ? (
-                            <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline muted />
+                            <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" autoPlay playsInline muted />
                         ) : (
                             <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-[#1A1A1A]">
                                 <VideoOff className="w-8 h-8 text-gray-500 mb-2" />
@@ -985,9 +985,9 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             <div className="flex gap-2">
                                 {currentQuestion && (
                                     <>
-                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">다음 질문</button>
+                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">질문 듣기</button>
                                         <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
-                                        <button onClick={() => acknowledgeQuestion(currentQuestion)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 읽기</button>
+                                        <button onClick={() => acknowledgeQuestion(currentQuestion)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 듣기</button>
                                     </>
                                 )}
                             </div>

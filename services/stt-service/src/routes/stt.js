@@ -199,7 +199,7 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
   }
 });
 
-// 전체 스크립트 조회 api
+// 스크립트 발행 전 수정을 위한 전체 스크립트 조회 api
 router.get("/mentoring/:mentoringId", async (req, res) => {
   try {
     const { mentoringId } = req.params;

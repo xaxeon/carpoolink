@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Undo2, Send, Bell, MousePointer2, Grab, Eraser, EyeOff, Loader2 } from "lucide-react";
+import { ChevronLeft, Undo2, Send, Bell, Info, Grab, Eraser, EyeOff, Loader2, X } from "lucide-react";
 
 import apiClient from "@/lib/apiClient";
 
@@ -128,7 +128,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           textHTML = parsedContent.pieces.map((p: any) => {
             const escapedText = p.text.replace(/\n/g, "<br>");
             if (p.isMasked === true || p.isMasked === "true") {
-              return `<span style="background-color: #FFCC00">${escapedText}</span>`;
+              return `<span class="masked-piece" style="background-color: #FFCC00; display: inline;">${escapedText}</span>`;
             }
             return escapedText;
           }).join("");
@@ -138,7 +138,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           textHTML = rawText.trim().replace(/\n/g, "<br>");
 
           if (s.isMasked === true || s.isMasked === "true" || parsedContent?.isMasked === true) {
-            textHTML = `<span style="background-color: #FFCC00">${textHTML}</span>`;
+            textHTML = `<span class="masked-piece" style="background-color: #FFCC00; display: inline;">${textHTML}</span>`;
           }
         }
 
@@ -157,7 +157,6 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
     try {
       const scriptBlocks = editorRef.current.querySelectorAll('.script-block');
-
       const payloadMap = new Map<string, { text: string; isMasked: boolean }[]>();
 
       scriptBlocks.forEach((block) => {
@@ -168,6 +167,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
         const pieces: { text: string; isMasked: boolean }[] = [];
 
+        // 💡 [핵심 수정] 노드 탐색 함수 개선
         const parseNode = (node: Node, isCurrentlyMasked: boolean) => {
           if (node.nodeType === Node.TEXT_NODE) {
             if (node.textContent) {
@@ -177,21 +177,39 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
             const el = node as HTMLElement;
             const tag = el.tagName.toUpperCase();
 
-            // 엔터를 막았기 때문에 BR 태그가 생길 일은 없지만, 기존 데이터 호환을 위해 남겨둠
             if (tag === 'BR') {
               pieces.push({ text: '\n', isMasked: isCurrentlyMasked });
               return;
             }
 
-            const bg = el.style.backgroundColor;
-            const isNodeMasked = bg.includes('rgb(255, 204, 0)') || bg.includes('#FFCC00') || bg.includes('#ffcc00');
-            const effectiveMask = isCurrentlyMasked || isNodeMasked;
+            // 1. 클래스명으로 마스킹 여부 체크
+            const hasMaskClass = el.classList.contains('masked-piece');
+
+            // 2. 인라인 스타일 배경색 추출 및 공백 제거 검사
+            const bg = (el.style.backgroundColor || '').replace(/\s+/g, '').toLowerCase();
+            const hasMaskColor =
+              bg.includes('rgb(255,204,0)') ||
+              bg.includes('#ffcc00') ||
+              bg.includes('rgba(255,204,0'); // 알파 채널 대비
+
+            // 부모가 마스킹 상태이거나, 현재 요소가 마스킹 클래스/컬러를 가졌다면 true
+            const effectiveMask = isCurrentlyMasked || hasMaskClass || hasMaskColor;
 
             el.childNodes.forEach(child => parseNode(child, effectiveMask));
           }
         };
 
-        contentNode.childNodes.forEach(child => parseNode(child, false));
+        // 💡 여기서 추가로 체크! 
+        // 만약 .script-content(텍스트 감싸는 영역) 자체나 최상위 블록에 마스킹 스타일이 입혀졌을 경우를 대비합니다.
+        const contentBg = (contentNode as HTMLElement).style?.backgroundColor || '';
+        const normalizedContentBg = contentBg.replace(/\s+/g, '').toLowerCase();
+        const isContentBlockMasked =
+          normalizedContentBg.includes('rgb(255,204,0)') ||
+          normalizedContentBg.includes('#ffcc00') ||
+          (contentNode as HTMLElement).classList.contains('masked-piece');
+
+        // 탐색 시작 시 기본 마스킹 상태를 위에서 검사한 결과로 설정합니다.
+        contentNode.childNodes.forEach(child => parseNode(child, isContentBlockMasked));
 
         if (!payloadMap.has(scriptId)) {
           payloadMap.set(scriptId, pieces);
@@ -201,7 +219,9 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
         }
       });
 
+      // 이하 변환 및 전송 로직 (기존과 동일)
       const payloadScripts = Array.from(payloadMap.entries()).map(([scriptId, rawPieces]) => {
+        // 1. 연속된 동일 마스킹 블록 병합 (기존 로직 유지)
         const mergedPieces = rawPieces.reduce((acc, current) => {
           if (acc.length > 0 && acc[acc.length - 1].isMasked === current.isMasked) {
             acc[acc.length - 1].text += current.text;
@@ -211,9 +231,28 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           return acc;
         }, [] as { text: string; isMasked: boolean }[]);
 
+        // 2. 💡 [핵심 수정] 원본 데이터(scriptList)에서 현재 scriptId와 일치하는 원본 스크립트 찾기
+        const originalScript = scriptList.find(
+          (s) => String(s.scriptId || s.id) === String(scriptId)
+        );
+
+        // 3. 기존 content 객체 파싱 및 보존 처리
+        let originalContent = originalScript?.content || {};
+        if (typeof originalContent === 'string') {
+          try {
+            originalContent = JSON.parse(originalContent);
+          } catch (e) {
+            originalContent = {};
+          }
+        }
+
+        // 4. 기존 속성(startTime, chunkIndex, endTime 등)은 유지하고, pieces만 업데이트하여 payload 조립
         return {
           scriptId: scriptId,
-          content: { pieces: mergedPieces }
+          content: {
+            ...originalContent,
+            pieces: mergedPieces
+          }
         };
       });
 
@@ -297,12 +336,12 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       <style>{`
         .editor-container { outline: none; }
         .editor-container ::selection { background-color: rgba(59, 130, 246, 0.4) !important; color: inherit; }
-        .editor-container span[style*="background-color"] { border-radius: 3px; padding: 2px 0; }
+        .editor-container span[style*="background-color"], .editor-container .masked-piece { background-color: rgb(255, 204, 0) !important; border-radius: 3px; padding: 2px 0; }
         .editor-container span[style*="transparent"], .editor-container span[style*="rgba(0, 0, 0, 0)"] { background-color: transparent !important; }
         
         .editor-container.mentee-view span[style*="rgb(255, 204, 0)"], 
         .editor-container.mentee-view span[style*="#FFCC00"], 
-        .editor-container.mentee-view span[style*="#ffcc00"] {
+        .editor-container.mentee-view .masked-piece {
           color: transparent !important; background-color: #FFCC00 !important; user-select: none;
         }
       `}</style>
@@ -326,24 +365,15 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
       <div className={`flex items-center justify-between px-5 py-3 border-b border-gray-100 border-dashed bg-[#FAFAFA] shrink-0 transition-all duration-300 overflow-hidden
         ${isMenteeView ? 'max-h-0 opacity-0 py-0' : 'max-h-20 opacity-100'}
       `}>
-        <div className="flex bg-gray-200/60 p-1 rounded-xl">
-          <button onClick={() => setEditMode("drag")} className={`px-4 py-1.5 text-[13px] font-bold rounded-lg transition-all flex items-center gap-1.5 ${editMode === "drag" ? 'bg-[#FFCC00] text-[#1A1A1A] shadow-sm' : 'text-gray-500'}`}>
-            <Grab className="w-3.5 h-3.5" /> 드래그
-          </button>
-          <button onClick={() => setEditMode("click")} className={`px-4 py-1.5 text-[13px] font-bold rounded-lg transition-all flex items-center gap-1.5 ${editMode === "click" ? 'bg-[#FFCC00] text-[#1A1A1A] shadow-sm' : 'text-gray-500'}`}>
-            <MousePointer2 className="w-3.5 h-3.5" /> 원클릭
-          </button>
+        <div className="`px-4 py-1.5 text-[13px] rounded-lg transition-all flex items-center gap-1.5 text-gray-500">
+          <Info className="w-4 h-4" />민감한 정보는 드래그하여 가릴 수 있습니다.
         </div>
 
         <div className="flex items-center gap-2">
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('mask')} className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹">
-            <EyeOff className="w-4 h-4" />
-          </button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('erase')} className="bg-gray-100 text-[#1A1A1A] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹 해제">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('mask')} className="bg-gray-100 text-gray-500 text-[12px] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹">
             <Eraser className="w-4 h-4" />
           </button>
-          <div className="h-4 w-[1px] bg-gray-300 mx-1" />
-          <button onMouseDown={(e) => e.preventDefault()} onClick={handleUndo} disabled={!canUndo} className={`p-2 rounded-lg transition-colors ${canUndo ? 'text-gray-700 hover:bg-gray-200' : 'text-gray-300 cursor-not-allowed'}`} title="실행 취소">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAction('erase')} className="bg-gray-100 text-gray-500 text-[12px] active:bg-gray-300 p-2 rounded-lg transition-colors shadow-sm" title="선택된 영역 마스킹 해제">
             <Undo2 className="w-4 h-4" />
           </button>
         </div>
@@ -357,7 +387,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           </div>
         ) : (
           <>
-            <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase">Mentoring ID: {id}</p>
+            <p className="text-[11px] font-bold text-gray-400 tracking-wider mb-2 uppercase"></p>
             <h2 className="text-[26px] font-extrabold text-[#1A1A1A] leading-tight mb-8">
               {mentoringInfo?.title}
               <span className="block text-[15px] font-medium text-gray-400 mt-2 tracking-normal">{mentoringInfo?.date}</span>

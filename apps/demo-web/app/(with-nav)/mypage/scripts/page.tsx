@@ -8,7 +8,8 @@ import apiClient from "@/lib/apiClient";
 
 type ScriptItem = {
   id: number;
-  mentorName: string;
+  counterpartName: string;
+  counterpartRole: "MENTOR" | "MENTEE";
   topic: string;
   date: string;
   isPublished: boolean;
@@ -70,9 +71,13 @@ function ScriptListContent() {
             ? `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
             : "날짜 미상";
 
+          const name = m.counterpart?.nickname || m.host?.nickname || "이름 없음";
+          const role = m.counterpart?.role === "MENTOR" ? "MENTOR" : "MENTEE";
+
           return {
             id: Number(m.mentoringId),
-            mentorName: m.host?.nickname || "알 수 없음",
+            counterpartName: name,
+            counterpartRole: role,
             topic: m.title,
             date: dateStr,
             isGroup: m.isGroup,
@@ -220,7 +225,10 @@ function ScriptListContent() {
                       </div>
                     )}
                     <div className="flex flex-col">
-                      <span className="text-[13px] font-bold text-gray-400">{script.mentorName} 멘토</span>
+                      <span className="text-[13px] font-bold text-gray-400">
+                        {script.counterpartRole === "MENTOR" ? "멘토" : "멘티"}
+                        <span className="text-gray-700 ml-1">{script.counterpartName}</span>
+                      </span>
                       <h3 className="text-[16px] font-bold leading-snug mt-0.5">{script.topic}</h3>
                     </div>
                   </div>
