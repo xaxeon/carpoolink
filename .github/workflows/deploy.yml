@@ -199,28 +199,14 @@ jobs:
               }
 
               if [ "$SERVICE" = "question-model-api" ]; then
-                DVC_PY=/tmp/dvc-venv/bin/python
-
-                if [ ! -x "$DVC_PY" ]; then
-                  python3 -m venv /tmp/dvc-venv || {
-                    apt-get update
-                    apt-get install -y python3-venv
-                    python3 -m venv /tmp/dvc-venv
-                  }
-                  "$DVC_PY" -m pip install --upgrade pip
-                  "$DVC_PY" -m pip install "dvc[s3]"
+                if [ ! -d /app/services/model/question_detection/tfidf_lr_v2 ] || \
+                   [ ! -d /app/services/model/question_detection/kc_electra_v2 ]; then
+                  echo "Missing question detection model artifacts on EC2."
+                  echo "Restore them before deploying question-model-api:"
+                  echo "  cd /app"
+                  echo "  /tmp/dvc-venv/bin/python -m dvc pull services/model/question_detection.dvc -j 1 --no-run-cache --force"
+                  exit 1
                 fi
-
-                if [ ! -f /app/.dvc/config ]; then
-                  cd /app && "$DVC_PY" -m dvc init --no-scm
-                  "$DVC_PY" -m dvc remote add -d carpoolink s3://capstone2026-carpoolink-dvc-kro
-                  "$DVC_PY" -m dvc remote modify carpoolink region ap-northeast-2
-                fi
-
-                mkdir -p /app/services/model
-                echo "${{ steps.dvc_file.outputs.question_detection_dvc }}" | base64 -d > /app/services/model/question_detection.dvc
-
-                cd /app && "$DVC_PY" -m dvc pull services/model/question_detection.dvc -j 1 --no-run-cache --force
               fi
 
               # 2. 기존 컨테이너 정리
