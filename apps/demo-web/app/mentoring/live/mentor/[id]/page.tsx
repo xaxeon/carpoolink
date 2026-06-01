@@ -912,7 +912,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                         className={`px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center transition-all ${isReading ? 'bg-red-500 text-white shadow-lg' : 'bg-[#1A1A1A] text-[#FFCC00]'}`}
                                     >
                                         <Volume2 className={`w-3.5 h-3.5 mr-1.5 ${isReading ? 'animate-pulse' : ''}`} />
-                                        {isReading ? '읽는 중...' : '질문 읽기'}
+                                        {isReading ? '읽는 중...' : '질문 듣기'}
                                     </button>
                                     <button
                                         onClick={() => completeQuestion(Number(currentQuestion?.id))}
@@ -985,7 +985,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             <div className="flex gap-2">
                                 {currentQuestion && (
                                     <>
-                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">다음 질문</button>
+                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">질문 읽기</button>
                                         <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
                                         <button onClick={() => acknowledgeQuestion(currentQuestion)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 읽기</button>
                                     </>
