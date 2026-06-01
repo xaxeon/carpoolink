@@ -961,7 +961,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     {/* [2] 비디오 화면 영역 */}
                     <div className="w-full aspect-[16/9] bg-[#1A1A1A] rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-2xl border border-gray-800 shrink-0">
                         {isCameraOn ? (
-                            <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline muted />
+                            <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" autoPlay playsInline muted />
                         ) : (
                             <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-[#1A1A1A]">
                                 <VideoOff className="w-8 h-8 text-gray-500 mb-2" />
