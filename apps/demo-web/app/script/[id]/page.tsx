@@ -221,6 +221,7 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
 
       // 이하 변환 및 전송 로직 (기존과 동일)
       const payloadScripts = Array.from(payloadMap.entries()).map(([scriptId, rawPieces]) => {
+        // 1. 연속된 동일 마스킹 블록 병합 (기존 로직 유지)
         const mergedPieces = rawPieces.reduce((acc, current) => {
           if (acc.length > 0 && acc[acc.length - 1].isMasked === current.isMasked) {
             acc[acc.length - 1].text += current.text;
@@ -230,9 +231,28 @@ export default function ScriptEditPage({ params }: { params: Promise<{ id: strin
           return acc;
         }, [] as { text: string; isMasked: boolean }[]);
 
+        // 2. 💡 [핵심 수정] 원본 데이터(scriptList)에서 현재 scriptId와 일치하는 원본 스크립트 찾기
+        const originalScript = scriptList.find(
+          (s) => String(s.scriptId || s.id) === String(scriptId)
+        );
+
+        // 3. 기존 content 객체 파싱 및 보존 처리
+        let originalContent = originalScript?.content || {};
+        if (typeof originalContent === 'string') {
+          try {
+            originalContent = JSON.parse(originalContent);
+          } catch (e) {
+            originalContent = {};
+          }
+        }
+
+        // 4. 기존 속성(startTime, chunkIndex, endTime 등)은 유지하고, pieces만 업데이트하여 payload 조립
         return {
           scriptId: scriptId,
-          content: { pieces: mergedPieces }
+          content: {
+            ...originalContent,
+            pieces: mergedPieces
+          }
         };
       });
 
