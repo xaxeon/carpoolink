@@ -85,10 +85,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
     const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
     const [completedIds, setCompletedIds] = useState<number[]>([]);
     const [clusters, setClusters] = useState<any[]>([]);
-    const [isClustering, setIsClustering] = useState(false);
-
-    // 비공개 모드 UI 상태 관리
-    const [isPrivateMode, setIsPrivateMode] = useState(false);
 
     // 질문 ID별 랭킹 점수를 저장할 상태
     const [questionRankings, setQuestionRankings] = useState<Record<string, number>>({});
@@ -209,7 +205,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }
 
         const timer = setTimeout(async () => {
-            setIsClustering(true);
             setIsRanking(true);
             try {
                 const QUESTION_SERVICE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4003";
@@ -317,7 +312,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             } catch (error) {
                 console.error("🚨 [전체 실시간 연동 파이프라인 네트워크 크래시]:", error);
             } finally {
-                setIsClustering(false);
                 setIsRanking(false);
             }
         }, 800); // 0.8초 디바운스 딜레이
@@ -591,17 +585,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                 );
             });
 
-            if (shouldControlMenteeConsumers) {
-                pausedQuestionUserIdRef.current = question.userId;
-                setIsPrivateMode(true);
-                const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
-                fetch(`${STT_SERVER_URL}/audio/stt/session/${mentoringId}/private`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isPrivate: true })
-                }).catch(e => console.error('[STT] 비공개 상태 설정 실패', e));
-            }
-
             // API가 방금 응답해준 확실한 데이터를 바로 꺼내서 읽음
             const questionText = question.content;
 
@@ -740,14 +723,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             setCurrentIdx(0);
             setCompletedIds((prev) => [...prev, questionId]);
             setQuestions((prev) => prev.filter(q => q.id !== questionId));
-
-            setIsPrivateMode(false);
-            const STT_SERVER_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:4004";
-            fetch(`${STT_SERVER_URL}/audio/stt/session/${mentoringId}/private`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isPrivate: false })
-            }).catch(e => console.error('[STT] 비공개 상태 초기화 실패', e));
 
             console.log(`✅ [API 성공] 질문 상태가 COMPLETED로 변경됨:`, res.data);
         } catch (err: any) {
