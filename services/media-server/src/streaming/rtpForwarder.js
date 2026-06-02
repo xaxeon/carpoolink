@@ -47,7 +47,7 @@ export class RtpForwarder {
     }
 
     _allocPort() {
-        for (let p = 5100; p <= 5200; p++) {
+        for (let p = 5100; p <= 5200; p += 2) {
             if (!this._usedPorts.has(p)) {
                 this._usedPorts.add(p);
                 return p;
