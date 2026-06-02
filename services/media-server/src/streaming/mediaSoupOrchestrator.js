@@ -431,6 +431,7 @@ export class MediaSoupOrchestrator {
 
         for (const producer of peer.producers.values()) {
             this.audioPipeline.detachAudioProducer(mentoringId, producer.id);
+            this.rtpForwarder.stop(producer.id);
             producer.close();
         }
 
