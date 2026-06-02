@@ -55,17 +55,18 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
   useEffect(() => {
     if (!isLoading && contentRef.current && scriptList.length > 0) {
 
-      // 백엔드가 이미 정렬해서 줬으므로, scriptList를 그대로 순방향 매핑합니다.
-      const htmlContent = scriptList.map((s: any) => {
+      let htmlContent = "";
+      let inPrivateBlock = false;
+
+      scriptList.forEach((s: any, index: number) => {
         const parsedContent = s.content;
         const speakerName = s.speaker?.nickname;
         const speakerRole = s.speaker?.role || "MENTEE";
-
         const rawTime = parsedContent?.startTime ?? s.createdAt;
 
         // 발화자 뱃지 구성
         let speakerBadge = "";
-        if (mentoringInfo?.isGroup === false && speakerName) {
+        if (speakerName) {
           const isMentor = speakerRole === "MENTOR";
           const roleColor = isMentor ? "text-[#FFCC00] bg-[#FFCC00]/10" : "text-blue-500 bg-blue-50";
           const roleText = isMentor ? "멘토" : "멘티";
@@ -87,26 +88,82 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
           ? `<span class="text-[12px] text-amber-400 font-medium ml-2 select-none inline-block align-middle">${timeString}</span>`
           : "";
 
-        // 1. 비공개 인가 권한 처리 구간
-        if (s.isPrivate) {
-          const privateText = parsedContent?.pieces?.[0]?.text || "비공개 질문입니다.";
-          return `<div class="mb-1.5 leading-relaxed text-gray-400 italic">🔒 <span>${privateText}</span>${speakerBadge}${timestampBadge}</div>`;
-        }
-
-        // 2. 가공된 pieces 기반 메인 렌더링
+        // 메인 텍스트 파싱
         let textHTML = "";
+        let rawTextForCondition = "";
+
         if (parsedContent?.pieces && Array.isArray(parsedContent.pieces)) {
           textHTML = parsedContent.pieces.map((piece: any) => {
+            rawTextForCondition += piece.text || "";
             if (piece.isMasked) {
               return `<span style="background-color: #FFCC00">${piece.text}</span>`;
             }
             return piece.text || "";
           }).join('');
+        } else {
+          // pieces가 없는 예외/과거 데이터 처리용
+          rawTextForCondition = parsedContent?.text || "";
+          textHTML = rawTextForCondition;
         }
 
+        // 💡 화면 표시용 텍스트 가공: 안내 문구를 화면에서 지웁니다.
+        textHTML = textHTML.replace("(질문 읽기) 비공개 질문입니다.", "").trim();
         textHTML = textHTML.replace(/\n/g, "<br>");
-        return `<div class="mb-1.5 leading-relaxed"><span>${textHTML}</span>${speakerBadge}${timestampBadge}</div>`;
-      }).join('');
+
+        // 💡 비공개 구간 시작 여부 판별
+        const isStartOfPrivateText = rawTextForCondition.trim().startsWith("(질문 읽기) 비공개 질문입니다.");
+        const isCurrentlyPrivate = s.isPrivate === true || String(s.isPrivate) === "true";
+
+        const isUnauthorized = isCurrentlyPrivate && rawTextForCondition === ("비공개 질문 및 답변입니다.");
+
+        if (isUnauthorized) {
+          htmlContent += `<div class="my-3 leading-relaxed text-gray-400 italic text-sm font-normal flex items-center select-none">비공개 질문 구간입니다.</div>`;
+        } else {
+          if (isStartOfPrivateText || (isCurrentlyPrivate && !inPrivateBlock)) {
+            if (inPrivateBlock) {
+              htmlContent += `</div></div>`; // 기존 블록 닫기
+            }
+            inPrivateBlock = true;
+
+            // 비공개 구간 디자인 (편집 화면과 동일한 회색 박스와 뱃지)
+            htmlContent += `<div class="private-section bg-gray-100 border border-gray-100 rounded-lg p-4 pt-11 my-6 relative transition-colors"><span class="absolute top-2 left-2 text-[11px] font-bold text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded select-none inline-block" contenteditable="false">비공개 질문 구간</span><div class="private-content-inner space-y-1.5">`;
+          }
+
+          // 텍스트가 비어있지 않거나(안내 문구 제외 후), 비공개 안내 문구인 경우에만 렌더링
+          if (textHTML.length > 0 || isCurrentlyPrivate) {
+            htmlContent += `<div class="mb-1.5 leading-relaxed"><span>${textHTML}</span>${speakerBadge}${timestampBadge}</div>`;
+          }
+
+          // 💡 비공개 구간 종료 여부 판별
+          const nextScript = scriptList[index + 1];
+          let nextIsPrivateText = false;
+          let nextIsPrivateFlag = false;
+
+          if (nextScript) {
+            const nextParsedContent = nextScript.content;
+            let nextRawText = "";
+            if (nextParsedContent?.pieces && Array.isArray(nextParsedContent.pieces)) {
+              nextRawText = nextParsedContent.pieces.map((p: any) => p.text).join("");
+            } else {
+              nextRawText = nextParsedContent?.text || "";
+            }
+
+            nextIsPrivateText = nextRawText.trim().startsWith("(질문 읽기) 비공개 질문입니다.");
+            nextIsPrivateFlag = nextScript.isPrivate === true || String(nextScript.isPrivate) === "true";
+          }
+
+          const shouldClosePrivateBlock = inPrivateBlock && (
+            !nextScript ||
+            (!nextIsPrivateFlag && !nextIsPrivateText) ||
+            nextIsPrivateText
+          );
+
+          if (shouldClosePrivateBlock) {
+            htmlContent += `</div></div>`; // Wrapper 닫기
+            inPrivateBlock = false;
+          }
+        }
+      });
 
       contentRef.current.innerHTML = htmlContent;
     }
@@ -164,7 +221,7 @@ export default function PublishedScriptPage({ params }: { params: Promise<{ id: 
             {/* 편집 기능이 제거된 순수 텍스트 컨테이너 (포인터 이벤트 막음) */}
             <div
               ref={contentRef}
-              className="mentee-view-container text-[16px] leading-[1.9] text-gray-700 whitespace-pre-wrap tracking-tight p-6 bg-[#FAFAFA] border border-gray-100 rounded-2xl pointer-events-none shadow-sm"
+              className="mentee-view-container text-[16px] leading-[1.9] text-gray-700 whitespace-pre-wrap tracking-tight p-6 border border-gray-100 rounded-lg pointer-events-none shadow-sm"
             />
 
             <p className="text-center text-gray-400 text-[12px] mt-8 font-medium">

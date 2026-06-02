@@ -57,18 +57,30 @@ function hasMaskedFlag(content) {
 }
 
 // 스크립트 조회 권한을 판단하는 함수
-function canViewPrivateScript(script, viewerUserId) {
+function canViewPrivateScript(script, viewerUserId, questionOwnerId = null) {
     if (!script.isPrivate) {
         return true;
     }
 
+    const viewerIdStr = String(viewerUserId);
+    const scriptOwnerIdStr = String(script.userId);
+    const mentorIdStr = String(script.mentoring?.userId || script.mentoringUserId);
+    const questionOwnerIdStr = questionOwnerId ? String(questionOwnerId) : null;
+
     // 비공개 질문 단락: 발화자 멘티(작성자)와 주관 멘토만 조회 가능
-    return script.userId === viewerUserId || script.mentoring.userId === viewerUserId;
+    return (
+        viewerIdStr === mentorIdStr ||
+        viewerIdStr === scriptOwnerIdStr ||
+        (questionOwnerIdStr && viewerIdStr === questionOwnerIdStr)
+    );
 }
 
 // 조회 권한을 확인해 마스킹/비공개 처리가 완료된 스크립트 단락을 반환하는 함수
-function getVisibleContent(script, viewerUserId) {
-    if (!canViewPrivateScript(script, viewerUserId)) {
+function getVisibleContentWithParent(script, mentoring, viewerUserId, questionOwnerId) {
+    // 헬퍼 매핑을 위해 script 내부에 mentoring 정보를 임시 주입
+    const extendedScript = { ...script, mentoring };
+
+    if (!canViewPrivateScript(extendedScript, viewerUserId, questionOwnerId)) {
         return {
             isPrivate: true,
             pieces: [{ text: '비공개 질문 및 답변입니다.', isMasked: false }],
@@ -76,27 +88,23 @@ function getVisibleContent(script, viewerUserId) {
     }
 
     const content = script.content;
-
     if (content && Array.isArray(content.pieces)) {
         return {
             isPrivate: script.isPrivate || false,
             pieces: content.pieces.map(piece => ({
                 text: piece.text || '',
-                isMasked: !!piece.isMasked
+                isMasked: piece.isMasked || false
             }))
         };
     }
 
     if (hasMaskedFlag(script.content)) {
-        // 마스킹된 단락은 멘토/멘티 모두 원문 비노출
-        const rawText = content?.text || (typeof content === 'string' ? content : '');
         return {
             isPrivate: script.isPrivate || false,
-            pieces: [{ text: rawText || '마스킹된 단락입니다.', isMasked: true }]
+            pieces: [{ text: content?.text || '마스킹된 단락입니다.', isMasked: true }]
         };
     }
 
-    // 4. 일반 raw 텍스트 상태인 경우 정규화
     return {
         isPrivate: script.isPrivate || false,
         pieces: [{ text: content?.text || String(content || ''), isMasked: false }]
@@ -104,8 +112,22 @@ function getVisibleContent(script, viewerUserId) {
 }
 
 // 스크립트 단락을 클라이언트에 반환할 형태로 매핑하는 함수
-function mapScriptParagraph(script, viewerUserId) {
-    const visibility = getVisibleContent(script, viewerUserId);
+function mapScriptParagraph(script, viewerUserId, questionOwnerId = null) {
+    const rawText = script.content?.text || '';
+    const isMentor = script.userId === script.mentoring.userId;
+
+    // "(질문 읽기) 비공개 질문입니다." 문구로 시작하고 멘토가 아닌 사람(즉, 질문한 멘티)이라면
+    // 이 구간의 질문 당사자로 기억해 둡니다.
+    if (script.isPrivate && rawText.trim().startsWith("(질문 읽기) 비공개 질문입니다.") && !isMentor) {
+        questionOwnerId = script.userId;
+    }
+    // 비공개 구간이 끝나면(isPrivate가 false가 되면) 당사자 ID 플래그를 초기화합니다.
+    else if (!script.isPrivate) {
+        questionOwnerId = null;
+    }
+
+    // 권한 판단 시 실시간으로 추적된 currentQuestionOwnerId를 주입합니다.
+    const visibility = getVisibleContentWithParent(script, script.mentoring, viewerUserId, questionOwnerId);
 
     return {
         scriptId: script.scriptId.toString(),
@@ -119,7 +141,7 @@ function mapScriptParagraph(script, viewerUserId) {
             userId: script.userId.toString(),
             nickname: script.user?.nickname ?? '알 수 없음',
             role: script.user?.role ?? 'MENTEE',
-            isHostMentor: script.userId === script.mentoring.userId,
+            isHostMentor: isMentor,
         },
     };
 }
@@ -250,9 +272,48 @@ router.get('/:mentoringId', requireUser, async (req, res, next) => {
             return res.status(404).json({ message: '멘토링을 찾을 수 없거나 접근이 거부되었습니다.' });
         }
 
+        let currentQuestionOwnerId = null;
+
         // 스크립트 단락별로 조회 권한을 판단해 마스킹/비공개 처리를 적용한 후 반환, createdAt 기준으로 정렬
+        //const scripts = mentoring.scripts
+        //    .map((script) => mapScriptParagraph({ ...script, mentoring }, req.user.userId, currentQuestionOwnerId))
+        //    .filter(Boolean)
+        //    .sort((left, right) => new Number(left.scriptId) - new Number(right.scriptId));
+
         const scripts = mentoring.scripts
-            .map((script) => mapScriptParagraph({ ...script, mentoring }, req.user.userId))
+            .map((script) => {
+                const rawText = script.content?.text || '';
+                const isMentor = script.userId === mentoring.userId;
+
+                // "(질문 읽기) 비공개 질문입니다." 문구로 시작하고 멘토가 아닌 사람(즉, 질문한 멘티)이라면
+                // 이 구간의 질문 당사자로 기억해 둡니다.
+                if (script.isPrivate && rawText.trim().startsWith("(질문 읽기) 비공개 질문입니다.") && !isMentor) {
+                    currentQuestionOwnerId = script.userId;
+                }
+                // 비공개 구간이 끝나면(isPrivate가 false가 되면) 당사자 ID 플래그를 초기화합니다.
+                else if (!script.isPrivate) {
+                    currentQuestionOwnerId = null;
+                }
+
+                // 권한 판단 시 실시간으로 추적된 currentQuestionOwnerId를 주입합니다.
+                const visibility = getVisibleContentWithParent(script, mentoring, req.user.userId, currentQuestionOwnerId);
+
+                return {
+                    scriptId: script.scriptId.toString(),
+                    isPrivate: script.isPrivate,
+                    createdAt: script.createdAt,
+                    content: {
+                        pieces: visibility.pieces,
+                        startTime: script.content?.startTime ?? null
+                    },
+                    speaker: {
+                        userId: script.userId.toString(),
+                        nickname: script.user?.nickname ?? '알 수 없음',
+                        role: script.user?.role ?? 'MENTEE',
+                        isHostMentor: isMentor,
+                    },
+                };
+            })
             .filter(Boolean)
             .sort((left, right) => new Number(left.scriptId) - new Number(right.scriptId));
 

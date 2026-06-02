@@ -46,7 +46,6 @@ function mapQuestion(question) {
         priorityScore: question.priorityScore,
         status: question.status,
         createdAt: question.createdAt,
-        answerContent: question.answerContent ?? null,
         answeredAt: question.answeredAt ?? null,
         user: question.user
             ? {
@@ -580,7 +579,7 @@ router.get('/one-on-one', requireUser, async (req, res, next) => {
                 ? mentoring.participants.find((p) => p.userId !== currentUserId)?.user
                 : mentoring.hostMentor;
             const normalizedStatus = mentoring.status === 'COMPLETED' ? 'COMPLETE' : mentoring.status;
-            const counterpartRole = isHost ? 'MENTOR' : 'MENTEE';
+            const counterpartRole = isHost ? 'MENTEE' : 'MENTOR';
 
             return {
                 mentoringId: mentoring.mentoringId,

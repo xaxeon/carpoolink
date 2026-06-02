@@ -974,7 +974,6 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
                         {/* 비디오 내부 상단 뱃지 (질문이 존재하고, 질문 읽기 상태일 때만 노출) */}
                         <div className="relative w-full flex justify-center pt-4 z-10">
-                            {/* 질문 읽기 버튼이 작동했을 때만 뱃지를 렌더링합니다 */}
                             {isReading && currentQuestion && (
                                 <div className={`text-[11px] font-bold px-4 py-1.5 rounded-full backdrop-blur-md shadow-md animate-in fade-in duration-300 ${currentQuestion.isPrivate ? 'bg-red-600 text-white' : 'bg-[#FFCC00] text-[#1A1A1A]'}`}>
                                     {currentQuestion.isPrivate ? "비공개 질문 답변중" : "공개 질문 답변중"}
@@ -982,18 +981,26 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                             )}
                         </div>
 
-                        {/* 비디오 내부 하단 컨트롤러 (질문이 있을 때만 버튼 활성화 혹은 노출) */}
-                        <div className="relative w-full flex items-center justify-between px-3 pb-3 gap-2 z-10">
-                            <div className="flex gap-2">
+                        {/* 비디오 내부 하단 음성 명령 가이드 및 설정 */}
+                        <div className="relative w-full flex items-end justify-between px-4 pb-4 z-10">
+                            <div className="flex flex-col gap-1.5 dynamic-fade-in">
                                 {currentQuestion && (
                                     <>
-                                        <button onClick={handleNextQuestion} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">질문 듣기</button>
-                                        <button onClick={() => completeQuestion(currentQuestion.id)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full">답변 완료</button>
-                                        <button onClick={() => acknowledgeQuestion(currentQuestion)} className="bg-[#FFCC00] text-[#1A1A1A] text-[11px] font-bold px-3 py-2 rounded-full text-center active:scale-95 transition-transform">질문 다시 듣기</button>
+                                        {/* 상단 메인 안내 문구 */}
+                                        <p className="text-[12px] text-[#FFCC00] font-semibold tracking-tight flex items-center gap-1">
+                                            <span className="inline-block w-1.5 h-1.5 bg-[#FFCC00] rounded-full animate-pulse" />
+                                            하단 음성 명령을 사용 가능합니다.
+                                        </p>
+
+                                        {/* 사용 가능한 음성 명령어 단어장 형태의 안내 */}
+                                        <div className="flex items-center gap-1.5 text-[11px] text-gray-300 font-medium">
+                                            <span className="bg-white/10 backdrop-blur-sm px-2 py-0.5 rounded border border-white/5">질문 듣기</span>
+                                            <span className="bg-white/10 backdrop-blur-sm px-2 py-0.5 rounded border border-white/5">답변 완료</span>
+                                            <span className="bg-white/10 backdrop-blur-sm px-2 py-0.5 rounded border border-white/5">다시 듣기</span>
+                                        </div>
                                     </>
                                 )}
                             </div>
-                            <button className="bg-black/50 backdrop-blur-md p-2 rounded-full text-white"><Settings className="w-4 h-4" /></button>
                         </div>
                     </div>
                 </div>

@@ -101,6 +101,7 @@ export class RtpForwarder {
             chunkIndex: 0,
             mentoringId,
             userId,
+            isPrivate: false,
         };
 
         // 긴 침묵 기준: 2초 이상이면 문장 경계로 판단해 flush
@@ -190,6 +191,15 @@ export class RtpForwarder {
         this.active.set(producer.id, state);
     }
 
+    setPrivateStateForMentoring(mentoringId, isPrivate) {
+        for (const [producerId, state] of this.active.entries()) {
+            if (Number(state.mentoringId) === Number(mentoringId)) {
+                state.isPrivate = isPrivate;
+                console.log(`[RtpForwarder] Mentoring ${mentoringId} 비공개 상태 변경: ${isPrivate}`);
+            }
+        }
+    }
+
     // 누적된 pendingPcm을 STT로 전송하고 pcmBuffer 앞부분을 정리
     _flushPending(state) {
         if (state.pendingPcm.length < PCM_BYTES_PER_SEC * 1.0) {
@@ -225,6 +235,7 @@ export class RtpForwarder {
         form.append('sessionOffset', String(sessionOffset));
         form.append('startTime', String(sessionOffset));
         form.append('endTime', String(endTimeSec));
+        form.append('isPrivate', String(state.isPrivate || false));
 
         const res = await fetch(`${this.sttServiceUrl}/audio/stt/chunk`, {
             method: 'POST',

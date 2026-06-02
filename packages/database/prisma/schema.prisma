@@ -153,7 +153,6 @@ model Question {
   priorityScore Float           @default(0) @map("priority_score")
   status        QuestionStatus  @default(BEFORE) @map("status")
   createdAt     DateTime        @default(now()) @map("created_at")
-  answerContent String?         @db.VarChar(500) @map("answer_content")
   answeredAt    DateTime?       @map("answered_at")
   userId        BigInt          @map("user_id")
   mentoringId   BigInt          @map("mentoring_id")

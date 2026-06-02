@@ -226,7 +226,7 @@ function ScriptListContent() {
                     )}
                     <div className="flex flex-col">
                       <span className="text-[13px] font-bold text-gray-400">
-                        {script.counterpartRole === "MENTOR" ? "멘토" : "멘티"}
+                        {(!script.isGroup && script.counterpartRole === "MENTEE") ? "멘티" : "멘토"}
                         <span className="text-gray-700 ml-1">{script.counterpartName}</span>
                       </span>
                       <h3 className="text-[16px] font-bold leading-snug mt-0.5">{script.topic}</h3>
