@@ -342,17 +342,23 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }
 
         // 클러스터 결과를 순회하며 화면에 띄울 대표 질문 객체 생성
-        const mappedQueue = clusters.map(cluster => {
-            const repId = Number(cluster.representative_question_id);
-            const originalQ = activeQuestions.find(q => q.id === repId) || activeQuestions[0];
+        const mappedQueue = clusters
+            .map(cluster => {
+                const repId = Number(cluster.representative_question_id);
+                const originalQ = activeQuestions.find(q => q.id === repId);
 
-            return {
-                ...originalQ,
-                id: repId,
-                content: cluster.representative_question, // AI 정제 텍스트
-                clusterSize: cluster.member_questions?.length || 1,
-            } as Question;
-        });
+                if (!originalQ) {
+                    return null;
+                }
+
+                return {
+                    ...originalQ,
+                    id: originalQ.id,
+                    content: cluster.representative_question, // AI 정제 텍스트
+                    clusterSize: cluster.member_questions?.length || 1,
+                } as Question;
+            })
+            .filter((q): q is Question => q !== null);
 
         // 최종 하이브리드 정렬 실행
         return mappedQueue.sort((a, b) => {
