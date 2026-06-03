@@ -575,6 +575,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                     },
                     (response: any) => {
                         if (response?.ok) {
+                            pausedQuestionUserIdRef.current = question.userId ?? null;
                             resolve();
                             console.log(`✅ [시그널 성공] 멘티 음성 수신이 일시 중지됨 (exceptUserId: ${question.userId})`);
                             return;
@@ -597,6 +598,12 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
             playQuestionAudio(ttsText);
 
             const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${question.id}/acknowledge`);
+
+            setQuestions((prev) => prev.map((item) => (
+                item.id === question.id
+                    ? { ...item, status: 'ANSWERING' }
+                    : item
+            )));
 
             setIsReading(true);
             console.log(`✅ [API 성공] 질문 상태가 ANSWERING으로 변경됨:`, res.data);
@@ -673,20 +680,18 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }
 
         const currentQuestion = currentQuestionRef.current;
-        const shouldControlMenteeConsumers = Boolean(currentQuestion?.id === questionId && currentQuestion.isPrivate);
+        const shouldResumeAudio = Boolean(currentQuestion?.id === questionId && currentQuestion.isPrivate && pausedQuestionUserIdRef.current !== null);
 
-        const shouldResumeAudio = shouldControlMenteeConsumers && pausedQuestionUserIdRef.current !== null;
+        setIsReading(false);
+        setCurrentIdx(0);
+        setCompletedIds((prev) => [...prev, questionId]);
+        setQuestions((prev) => prev.filter(q => q.id !== questionId));
 
         if (shouldResumeAudio) {
             try {
                 await new Promise<void>((resolve, reject) => {
                     if (!socket?.connected || !sendSignal) {
                         reject(new Error("미디어 소켓이 연결되지 않았습니다."));
-                        return;
-                    }
-
-                    if (!shouldControlMenteeConsumers) {
-                        resolve();
                         return;
                     }
 
@@ -698,11 +703,11 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                 resolve();
                                 return;
                             }
-
                             reject(new Error(response?.error || "멘티 음성 수신을 다시 시작하지 못했습니다."));
                         }
                     );
-                });
+                })
+                console.log(`✅ [시그널 성공] 멘티 음성 수신이 재개됨`);
             } catch (resumeErr) {
                 console.error("❌ [복구 실패] 멘티 음성 수신 재개에 실패했습니다.", resumeErr);
             } finally {
@@ -711,19 +716,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
         }
 
         try {
-            console.log(`🚀 [API 요청] 질문 완료 처리 시작 (ID: ${questionId})`);
-
-            // 백엔드는 status가 'ANSWERING'일 때만 완료(complete)를 허락.
-            // 만약 멘토가 '질문 읽기'를 누르지 않고 바로 '답변 완료'를 눌렀을 경우를 대비해, 
-            // acknowledge를 강제로 한 번 찔러주고(에러는 무시) 바로 complete를 요청하도록 함.
-            await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/acknowledge`).catch(() => { });
             const res = await apiClient.post(`/api/mentorings/${mentoringId}/questions/${questionId}/complete`);
-
-            setIsReading(false);
-            setCurrentIdx(0);
-            setCompletedIds((prev) => [...prev, questionId]);
-            setQuestions((prev) => prev.filter(q => q.id !== questionId));
-
             console.log(`✅ [API 성공] 질문 상태가 COMPLETED로 변경됨:`, res.data);
         } catch (err: any) {
             console.error('❌ [API 실패] 질문 완료 처리 에러:', err.response?.data || err);
