@@ -382,6 +382,7 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
 
     // 현재 인덱스에 해당하는 질문 가져오기 (결합된 완성형 큐 사용)
     const currentQuestion = questionQueue[currentIdx];
+    const canCompleteQuestion = isReading && currentQuestion?.status === 'ANSWERING';
 
     // 소켓 리스너 안에서 최신 currentQuestion을 참조하기 위한 Effect
     useEffect(() => {
@@ -891,8 +892,14 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                         {isReading ? '읽는 중...' : '질문 듣기'}
                                     </button>
                                     <button
-                                        onClick={() => completeQuestion(Number(currentQuestion?.id))}
-                                        className="px-3 py-2.5 rounded-xl text-[12px] font-bold bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700"
+                                        onClick={() => {
+                                            if (!canCompleteQuestion) {
+                                                alert('답변 중인 질문만 완료할 수 있습니다.');
+                                                return;
+                                            }
+                                            completeQuestion(Number(currentQuestion?.id));
+                                        }}
+                                        className={`px-3 py-2.5 rounded-xl text-[12px] font-bold transition-colors ${canCompleteQuestion ? 'bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700' : 'bg-gray-200 hover:bg-gray-300 text-gray-500'}`}
                                     >
                                         답변 완료
                                     </button>
