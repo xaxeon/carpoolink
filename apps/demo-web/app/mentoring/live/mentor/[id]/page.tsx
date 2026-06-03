@@ -893,11 +893,13 @@ function MentorLiveContent({ mentoringId, role, userId, userName }: { mentoringI
                                     </button>
                                     <button
                                         onClick={() => {
-                                            if (!canCompleteQuestion) return;
+                                            if (!canCompleteQuestion) {
+                                                alert('답변 중인 질문만 완료할 수 있습니다.');
+                                                return;
+                                            }
                                             completeQuestion(Number(currentQuestion?.id));
                                         }}
-                                        disabled={!canCompleteQuestion}
-                                        className={`px-3 py-2.5 rounded-xl text-[12px] font-bold transition-colors ${canCompleteQuestion ? 'bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                        className={`px-3 py-2.5 rounded-xl text-[12px] font-bold transition-colors ${canCompleteQuestion ? 'bg-[#E0E0E0] hover:bg-[#D0D0D0] text-gray-700' : 'bg-gray-200 hover:bg-gray-300 text-gray-500'}`}
                                     >
                                         답변 완료
                                     </button>
