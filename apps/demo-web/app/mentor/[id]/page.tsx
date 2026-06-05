@@ -1,12 +1,12 @@
 "use client";
 
-// 💡 1. React에서 'use'를 추가로 임포트합니다.
+// 1. React에서 'use'를 추가로 임포트합니다.
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { MoreVertical, HelpCircle, AlertCircle } from "lucide-react";
 import apiClient from "@/lib/apiClient";
 
-// 💡 DB 필드와 UI 카테고리 매핑 테이블
+// DB 필드와 UI 카테고리 매핑 테이블
 const FIELD_MAP: Record<string, string> = {
   WORK: "업무",
   LIFE: "일상",
@@ -33,11 +33,11 @@ interface MentorDetail {
   count?: number;
 }
 
-// 💡 2. params의 타입을 Promise 형태로 감싸줍니다.
+// 2. params의 타입을 Promise 형태로 감싸줍니다.
 export default function MentorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
 
-  // 💡 3. React.use()를 사용하여 비동기 params를 동기적으로 풀어줍니다!
+  // 3. React.use()를 사용하여 비동기 params를 동기적으로 풀어줍니다!
   const unwrappedParams = use(params);
   const mentorId = unwrappedParams.id;
 
@@ -49,7 +49,7 @@ export default function MentorDetailPage({ params }: { params: Promise<{ id: str
   useEffect(() => {
     const fetchMentorDetail = async () => {
       try {
-        // 💡 4. 풀어낸 mentorId를 사용합니다.
+        // 4. 풀어낸 mentorId를 사용합니다.
         const res = await apiClient.get(`/api/mentors/${mentorId}`);
         setMentor(res.data.mentor || res.data);
       } catch (err) {
@@ -63,7 +63,7 @@ export default function MentorDetailPage({ params }: { params: Promise<{ id: str
     if (mentorId) {
       fetchMentorDetail();
     }
-  }, [mentorId]); // 💡 5. 의존성 배열(dependency array)에도 mentorId를 넣어줍니다.
+  }, [mentorId]); // 5. 의존성 배열(dependency array)에도 mentorId를 넣어줍니다.
 
   if (isLoading) {
     return (

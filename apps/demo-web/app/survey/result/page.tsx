@@ -5,17 +5,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
   ChevronLeft, ArrowRight,
-  // 💡 심볼용 16가지 아이콘
+  // 심볼용 16가지 아이콘
   ChessKnight, BookHeart, Plane, Sparkles, Target, 
   Car, Sprout, BookOpen, Hammer, Wrench, Eye, 
   FlaskConical, Brain, Handshake, Leaf, Compass,
-  // 💡 그리드 카드용 아이콘 추가
+  // 그리드 카드용 아이콘 추가
   Briefcase, Search, MessageCircleQuestion, Map
 } from "lucide-react";
 
 import apiClient from "@/lib/apiClient";
 
-// 💡 16가지 결과 유형에 따른 심볼 아이콘 매핑 딕셔너리
+// 16가지 결과 유형에 따른 심볼 아이콘 매핑 딕셔너리
 const resultIconMap: Record<string, React.ReactNode> = {
   "야망의 야생마": <ChessKnight className="w-8 h-8 text-[#FFCC00]" strokeWidth={2} />,
   "공감형 전략가": <BookHeart className="w-8 h-8 text-[#FFCC00]" strokeWidth={2} />,
@@ -40,7 +40,7 @@ export default function SurveyResultPage() {
   
   const [surveyTitle, setSurveyTitle] = useState("");
   const [userAnswers, setUserAnswers] = useState<any[]>([]);
-  const [combinationCode, setCombinationCode] = useState(""); // 💡 "AABB" 같은 조합 코드를 저장할 State
+  const [combinationCode, setCombinationCode] = useState(""); // "AABB" 같은 조합 코드를 저장할 State
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function SurveyResultPage() {
         const parsedData = JSON.parse(storedData);
         setSurveyTitle(parsedData.result?.title || "알 수 없는 유형");
         setUserAnswers(parsedData.answers || []); 
-        // 💡 백엔드가 넘겨준 combinationCode (예: "BAAB")를 저장합니다.
+        // 백엔드가 넘겨준 combinationCode (예: "BAAB")를 저장합니다.
         setCombinationCode(parsedData.result?.combinationCode || ""); 
         setIsLoading(false);
       } catch (error) {
@@ -77,7 +77,7 @@ export default function SurveyResultPage() {
     }
   };
 
-  // 💡 문항 번호(stepIndex)와 사용자의 선택(A 또는 B)에 따라 알맞은 아이콘을 반환하는 함수
+  // 문항 번호(stepIndex)와 사용자의 선택(A 또는 B)에 따라 알맞은 아이콘을 반환하는 함수
   const getGridIcon = (stepIndex: number, codeChar: string) => {
     // A는 첫 번째 선택지(-1), B는 두 번째 선택지(-2)로 매핑됩니다.
     switch (stepIndex) {
@@ -132,12 +132,12 @@ export default function SurveyResultPage() {
         <div className="w-full grid grid-cols-2 gap-3 my-auto shrink-0 animate-in fade-in slide-in-from-bottom-4 duration-700">
           {userAnswers.length > 0 ? (
             userAnswers.map((item, index) => {
-              // 💡 조합 코드(예: "BAAB")에서 현재 인덱스의 글자('A' 또는 'B')를 추출하여 아이콘 매핑 함수에 전달합니다.
+              // 조합 코드(예: "BAAB")에서 현재 인덱스의 글자('A' 또는 'B')를 추출하여 아이콘 매핑 함수에 전달합니다.
               const codeChar = combinationCode[index] || "A"; 
               
               return (
                 <div key={index} className="bg-white rounded-2xl py-8 flex flex-col items-center justify-center shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08)]">
-                  {/* 💡 계산된 맞춤형 아이콘 렌더링 */}
+                  {/* 계산된 맞춤형 아이콘 렌더링 */}
                   {getGridIcon(index, codeChar)}
                   <span className="text-[14px] font-bold text-[#2F2F2F] text-center px-2 break-keep">
                     {item.answer}
