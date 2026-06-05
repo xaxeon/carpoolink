@@ -8,7 +8,7 @@ export default function SurveyLoadingPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // 💡 2.5초(2500ms) 뒤에 결과 화면(/survey/result)으로 자동 이동시킵니다.
+    // 2.5초(2500ms) 뒤에 결과 화면(/survey/result)으로 자동 이동시킵니다.
     const timer = setTimeout(() => {
       router.push("/survey/result");
     }, 2500);
