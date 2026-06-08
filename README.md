@@ -1,33 +1,26 @@
 # Carpoolink
 
-기 구축된 오프라인 중심 현직자 멘토링 매칭 플랫폼(이하 ‘카풀링’)을 온라인 실시간 소통형 멘토링으로 확장하기 위한 모노레포 프로젝트입니다.
+기 구축된 오프라인 중심 현직자 멘토링 매칭 플랫폼(이하 ‘카풀링’)을 온라인 실시간 소통형 멘토링으로 확장하기 위한 캡스톤 디자인 프로젝트입니다.
 
-## Monorepo 구조
+현직자 멘토와 예비 직장인 멘티가 장소에 구애받지 않고 실시간으로 소통하며, AI가 질문을 보조하고 대화 맥락을 관리하는 멘토링 환경을 구축하는 것을 목표로 합니다.
 
-```text
-apps/
-	demo-web/
-services/
-	mentoring-session/
-	sfu-server/
-	audio-router/
-	live-chat/
-	question-queue/
-	voice-command/
-	drm-guard/
-packages/
-	contracts/
-	sdk-client/
-	common/
-docs/
-	api/
-	guides/
-	architecture/
-tests/
-	integration/
-	e2e/
-	load/
-```
+## 주요 기능
+
+- 실시간 멘토링
+
+  멘토의 라이브 스트리밍 형태인 1:N 멘토링, 멘토와 멘티간 음성통화 형태인 1:1 멘토링을 지원합니다.
+- 실시간 채팅
+
+  멘티는 1:N 멘토링에 채팅과 유료질문(비공개 옵션 가능)으로 참여할 수 있습니다.
+- 질문 관리 시스템
+
+  무료 채팅에서 질문을 추출하고(질문탐지: 규칙 기반) 멘티에게 멘토링 맥락에 맞는 질문을 추천하며(질문추천: OpenAI API) 쌓인 질문을 군집화하고(질문군집화: 튜닝된 kc-electra), 멘토에게 멘토링 흐름에 맞는 질문을 보여줌으로써(질문정렬: impact score 계산 알고리즘) 효과적인 멘토링 환경을 지원합니다.
+- 음성 기반 진행 보조
+
+  멘토가 화면 조작이 어려운 상황에서도 음성 명령과 TTS로 멘토링을 진행할 수 있도록 합니다.
+- 자동 스크립트 생성
+
+  멘토링 중 발화는 STT를 통해 스크립트로 자동 저장되어 멘티가 학습 자료로 활용할 수 있습니다.
 
 ## 빠른 시작
 
@@ -36,7 +29,6 @@ tests/
 ```bash
 # 프로젝트 루트에서
 npm install
-cp .env.example .env
 ```
 
 ### 2. Docker Compose로 모든 서비스 실행
@@ -44,9 +36,6 @@ cp .env.example .env
 ```bash
 cd infra/compose
 docker-compose up -d
-
-# 상태 확인
-docker-compose ps
 ```
 
 ### 3. 웹 애플리케이션 실행
@@ -71,7 +60,3 @@ cd services/chat-service && npm run dev
 ## 배포
 
 자동 배포는 main 브랜치로 push 시 GitHub Actions를 통해 자동 실행됩니다.
-
-- **배포 가이드**: [infra/compose/DEPLOYMENT_GUIDE.md](./infra/compose/DEPLOYMENT_GUIDE.md)
-- **시크릿 설정**: [.github/SECRETS_SETUP.md](./.github/SECRETS_SETUP.md)
-- **로컬 개발**: [infra/compose/README.md](./infra/compose/README.md)
